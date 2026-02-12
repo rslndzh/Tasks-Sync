@@ -1,0 +1,9 @@
+Add Attio↔Locu sync, multi-workspace Linear, config-driven setup
+
+- JSON config file for all sync mappings with enabled/disabled toggle
+- Multiple Linear workspaces (DTF, UNI, AMA) with per-workspace API keys
+- Attio↔Locu two-way sync with due date and attio ID in task name
+- Locu project assignment support
+- Filter Linear issues to only those assigned to the viewer
+- One-directional creation (source→destination), two-way completion sync
+- No auto-creation in Attio/Linear from Todoist tasks
