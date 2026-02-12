@@ -1,0 +1,28 @@
+{
+  "syncIntervalMinutes": 5,
+
+  "attio": [
+    {
+      "todoistProject": "ADMIN",
+      "apiKeyEnv": "ATTIO_API_KEY"
+    }
+  ],
+
+  "linear": [
+    {
+      "teamKey": "DTF",
+      "todoistProject": "DTF",
+      "apiKeyEnv": "LINEAR_API_KEY_DTF"
+    },
+    {
+      "teamKey": "UNI",
+      "todoistProject": "UNI",
+      "apiKeyEnv": "LINEAR_API_KEY_UNI"
+    },
+    {
+      "teamKey": "AMA",
+      "todoistProject": "AMA",
+      "apiKeyEnv": "LINEAR_API_KEY_UNI"
+    }
+  ]
+}
