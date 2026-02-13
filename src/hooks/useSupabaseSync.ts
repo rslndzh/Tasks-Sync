@@ -45,17 +45,31 @@ export function useSupabaseSync() {
       try {
         await pullFromSupabase()
 
-        // If the initial push never landed (e.g., DB tables were missing
-        // when user signed up), detect and push all local data now.
+        // If data never landed in Supabase, push local data now.
         const userId = getCurrentUserId()
         if (userId !== "local" && supabase) {
-          const { count: remoteCount } = await supabase
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const client = supabase as any
+
+          const { count: remoteTaskCount } = await supabase
             .from("tasks")
             .select("id", { count: "exact", head: true })
-          const localCount = await db.tasks.where("user_id").equals(userId).count()
+          const localTaskCount = await db.tasks.where("user_id").equals(userId).count()
 
-          if ((remoteCount === null || remoteCount === 0) && localCount > 0) {
+          if ((remoteTaskCount === null || remoteTaskCount === 0) && localTaskCount > 0) {
             await pushAllToSupabase(userId)
+          } else {
+            // Tasks synced but connections may not be — check independently
+            const { count: remoteConnCount } = await client
+              .from("integrations")
+              .select("id", { count: "exact", head: true })
+            const localConnCount = await db.connections.count()
+
+            if ((remoteConnCount === null || remoteConnCount === 0) && localConnCount > 0) {
+              // Push just connections + rules
+              const { pushConnectionsToSupabase } = await import("@/lib/sync")
+              await pushConnectionsToSupabase(userId)
+            }
           }
         }
 

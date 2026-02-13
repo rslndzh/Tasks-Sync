@@ -533,6 +533,30 @@ export async function pushAllToSupabase(userId: string): Promise<void> {
 }
 
 /**
+ * Push only integration connections and import rules to Supabase.
+ * Used when tasks are already synced but connections were added after initial push.
+ */
+export async function pushConnectionsToSupabase(userId: string): Promise<void> {
+  if (!supabase) return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = supabase as any
+
+  const connections = await db.connections.toArray()
+  if (connections.length > 0) {
+    const remoteConns = connections.map((c) => connectionToRemote(c, userId))
+    const { error } = await client.from("integrations").upsert(remoteConns)
+    if (error) throw error
+  }
+
+  const rules = await db.importRules.toArray()
+  if (rules.length > 0) {
+    const remoteRules = rules.map((r) => importRuleToRemote(r, userId))
+    const { error } = await client.from("import_rules").upsert(remoteRules)
+    if (error) throw error
+  }
+}
+
+/**
  * Manual "Sync now" — pull remote, reload stores, flush queue.
  * If Supabase is empty but local has data, pushes everything.
  * Called by the user-facing sync button.
@@ -546,18 +570,32 @@ export async function syncNow(): Promise<void> {
   try {
     await pullFromSupabase()
 
-    // Check if the initial push never landed (e.g., tables were missing
-    // when user first signed up). If Supabase has 0 tasks but local has
-    // data for this user, do a full push.
+    // Check if data never landed in Supabase (e.g., tables were missing
+    // when user first signed up, or new tables were added later).
+    // Push any local data that's missing remotely.
     const userId = getCurrentUserId()
     if (userId !== "local") {
-      const { count: remoteCount } = await supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const client = supabase as any
+
+      const { count: remoteTaskCount } = await supabase
         .from("tasks")
         .select("id", { count: "exact", head: true })
-      const localCount = await db.tasks.where("user_id").equals(userId).count()
+      const localTaskCount = await db.tasks.where("user_id").equals(userId).count()
 
-      if ((remoteCount === null || remoteCount === 0) && localCount > 0) {
+      if ((remoteTaskCount === null || remoteTaskCount === 0) && localTaskCount > 0) {
+        // Full push — nothing is remote yet
         await pushAllToSupabase(userId)
+      } else {
+        // Tasks already synced. Check connections/rules independently.
+        const { count: remoteConnCount } = await client
+          .from("integrations")
+          .select("id", { count: "exact", head: true })
+        const localConnCount = await db.connections.count()
+
+        if ((remoteConnCount === null || remoteConnCount === 0) && localConnCount > 0) {
+          await pushConnectionsToSupabase(userId)
+        }
       }
     }
 
