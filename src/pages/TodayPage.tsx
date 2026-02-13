@@ -1,7 +1,6 @@
 import { useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { SortableTaskCard } from "@/components/SortableTaskCard"
-import { AddTaskInput } from "@/components/AddTaskInput"
 import { Sun, Play, Square } from "lucide-react"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useDroppable } from "@dnd-kit/core"
@@ -82,17 +81,6 @@ export function TodayPage() {
           </Button>
         )}
       </div>
-
-      {/* Quick add — add to default bucket's "today" section */}
-      {defaultBucket && (
-        <div className="mb-4">
-          <AddTaskInput
-            bucketId={defaultBucket.id}
-            section="today"
-            placeholder="Add a task for today..."
-          />
-        </div>
-      )}
 
       {/* Sortable task list — droppable area fills remaining space for reliable DnD */}
       <div ref={dropRef} className={cn("min-h-[200px] flex-1 rounded-lg transition-colors", isOver && "bg-primary/5 ring-1 ring-primary/20")}>
