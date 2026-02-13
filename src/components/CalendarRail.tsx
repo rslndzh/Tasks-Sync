@@ -45,27 +45,27 @@ export function CalendarRail() {
     return sum + Math.round((Date.now() - start) / 1000)
   }, 0)
 
-  if (todayTimeEntries.length === 0 && !isRunning) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center px-4 text-center">
-        <p className="text-xs text-muted-foreground">
-          Start a focus session to see your day light up.
-        </p>
-      </div>
-    )
-  }
+  const hasActivity = todayTimeEntries.length > 0 || isRunning
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header — total time */}
+      {/* Header — total time or gentle nudge */}
       <div className="mb-3 border-b border-border pb-2">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Today
         </p>
-        <p className="text-lg font-bold tabular-nums">{formatTime(totalSeconds)}</p>
-        <p className="text-[10px] text-muted-foreground">
-          {todaySessions.length} session{todaySessions.length !== 1 ? "s" : ""}
-        </p>
+        {hasActivity ? (
+          <>
+            <p className="text-lg font-bold tabular-nums">{formatTime(totalSeconds)}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {todaySessions.length} session{todaySessions.length !== 1 ? "s" : ""}
+            </p>
+          </>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            No sessions yet — start one to light up your day.
+          </p>
+        )}
       </div>
 
       {/* Timeline */}
