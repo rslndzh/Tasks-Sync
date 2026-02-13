@@ -79,7 +79,12 @@ function extractDueDate(item: InboxItem): DueDateInfo | null {
 
   if (!dateStr) return null
 
-  const dueDate = new Date(dateStr)
+  // Parse date-only strings ("2026-02-13") as local midnight, not UTC.
+  // new Date("2026-02-13") would be midnight UTC, which is yesterday in negative UTC offsets.
+  const parts = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const dueDate = parts
+    ? new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]))
+    : new Date(dateStr)
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const tomorrow = new Date(today)
