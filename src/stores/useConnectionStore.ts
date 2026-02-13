@@ -6,7 +6,7 @@ import type { IntegrationConnection } from "@/types/local"
 import type { IntegrationType } from "@/types/database"
 import type { InboxItem } from "@/types/inbox"
 import { mapInboxItemToLocalTask } from "@/types/inbox"
-import { validateApiKey as validateLinearKey, fetchTeams, fetchAssignedIssues, DEFAULT_LINEAR_STATE_FILTER } from "@/integrations/linear"
+import { validateApiKey as validateLinearKey, fetchTeams, fetchAssignedIssues, fetchWorkflowStates, DEFAULT_LINEAR_STATE_FILTER } from "@/integrations/linear"
 import type { LinearStateType } from "@/integrations/linear"
 import { mapLinearIssueToInboxItem } from "@/integrations/linear-mapper"
 import { validateApiToken as validateTodoistToken, fetchActiveTasks as fetchTodoistTasks, fetchProjects as fetchTodoistProjects, mapTodoistTaskToInboxItem } from "@/integrations/todoist"
@@ -185,6 +185,26 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         items = await syncAttioConnection(conn)
       }
 
+      // Inbound completion detection: find imported tasks that disappeared from the active fetch
+      const fetchedSourceIds = new Set(items.map((i) => i.sourceId))
+      const importedActiveTasks = await db.tasks
+        .where("source")
+        .equals(conn.type)
+        .filter((t) => t.status === "active" && t.source_id != null)
+        .toArray()
+
+      const completedExternally = importedActiveTasks.filter(
+        (t) => t.source_id && !fetchedSourceIds.has(t.source_id),
+      )
+
+      if (completedExternally.length > 0) {
+        const taskStore = useTaskStore.getState()
+        for (const task of completedExternally) {
+          // skipWriteback: task is already done in the source — don't push back
+          await taskStore.completeTask(task.id, { skipWriteback: true })
+        }
+      }
+
       // Filter out already-imported items (dedup by source + source_id)
       const existingSourceIds = new Set(
         (await db.tasks.where("source").equals(conn.type).toArray()).map(
@@ -360,8 +380,19 @@ async function syncLinearConnection(conn: IntegrationConnection): Promise<InboxI
   const stateFilter = (conn.metadata.linearStateTypes as LinearStateType[] | undefined) ?? [...DEFAULT_LINEAR_STATE_FILTER]
   const issues = await fetchAssignedIssues(conn.apiKey, undefined, stateFilter)
 
-  // Update connection metadata with latest user/teams info (preserve stateTypes setting)
-  const updatedMetadata = { ...conn.metadata, user, teams }
+  // Cache workflow state IDs per team for two-way sync writeback
+  const teamDoneStates: Record<string, string> = {}
+  const teamStartedStates: Record<string, string> = {}
+  for (const team of teams) {
+    const states = await fetchWorkflowStates(conn.apiKey, team.id)
+    const done = states.find((s) => s.type === "completed")
+    const started = states.find((s) => s.type === "started")
+    if (done) teamDoneStates[team.id] = done.id
+    if (started) teamStartedStates[team.id] = started.id
+  }
+
+  // Update connection metadata with latest user/teams info + cached states
+  const updatedMetadata = { ...conn.metadata, user, teams, teamDoneStates, teamStartedStates }
   await db.connections.update(conn.id, { metadata: updatedMetadata })
   void queueSync("integrations", "update", { id: conn.id, metadata: updatedMetadata })
 

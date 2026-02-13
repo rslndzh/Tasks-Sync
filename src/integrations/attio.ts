@@ -72,6 +72,65 @@ async function attioGet<T>(
   return (await response.json()) as T
 }
 
+async function attioPatch<T>(
+  apiKey: string,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  let response: Response
+
+  try {
+    response = await fetch(`${ATTIO_API_URL}${path}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new AttioApiError(
+      "Could not reach Attio. Check your connection.",
+      "network_error",
+    )
+  }
+
+  if (response.status === 429) {
+    throw new AttioApiError(
+      "Attio rate limit hit. Try again shortly.",
+      "rate_limited",
+      429,
+    )
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new AttioApiError(
+      "That Attio key didn't work. Double-check and try again?",
+      "invalid_key",
+      response.status,
+    )
+  }
+
+  if (response.status >= 500) {
+    throw new AttioApiError(
+      "Attio is having a moment. Try again shortly.",
+      "server_error",
+      response.status,
+    )
+  }
+
+  if (!response.ok) {
+    throw new AttioApiError(
+      `Unexpected response from Attio (${response.status}).`,
+      "unknown",
+      response.status,
+    )
+  }
+
+  return (await response.json()) as T
+}
+
 // ============================================================================
 // Public API functions
 // ============================================================================
@@ -111,6 +170,20 @@ export async function fetchTasks(apiKey: string): Promise<AttioTask[]> {
   }
 
   return all
+}
+
+// ============================================================================
+// Write operations (two-way sync)
+// ============================================================================
+
+/** Complete a task in Attio. */
+export async function closeAttioTask(apiKey: string, taskId: string): Promise<void> {
+  await attioPatch(apiKey, `/tasks/${taskId}`, { data: { is_completed: true } })
+}
+
+/** Reopen a completed task in Attio. */
+export async function reopenAttioTask(apiKey: string, taskId: string): Promise<void> {
+  await attioPatch(apiKey, `/tasks/${taskId}`, { data: { is_completed: false } })
 }
 
 // ============================================================================

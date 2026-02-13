@@ -58,6 +58,7 @@ CREATE TABLE tasks (
   status task_status NOT NULL DEFAULT 'active',
   source task_source NOT NULL DEFAULT 'manual',
   source_id TEXT,
+  connection_id UUID REFERENCES integrations ON DELETE SET NULL,
   bucket_id UUID REFERENCES buckets ON DELETE SET NULL,
   section section_type NOT NULL DEFAULT 'sooner',
   estimate_minutes INTEGER,
@@ -132,6 +133,7 @@ CREATE INDEX idx_buckets_user ON buckets (user_id, position);
 CREATE INDEX idx_tasks_user_bucket_section ON tasks (user_id, bucket_id, section) WHERE status = 'active';
 CREATE INDEX idx_tasks_user_section ON tasks (user_id, section) WHERE status = 'active';
 CREATE INDEX idx_tasks_user_source ON tasks (user_id, source) WHERE status = 'active';
+CREATE INDEX idx_tasks_connection_id ON tasks (connection_id) WHERE connection_id IS NOT NULL;
 CREATE INDEX idx_sessions_user_active ON sessions (user_id) WHERE is_active = TRUE;
 CREATE INDEX idx_time_entries_session ON time_entries (session_id);
 CREATE INDEX idx_time_entries_user_date ON time_entries (user_id, started_at);

@@ -98,6 +98,27 @@ class FlowpinDB extends Dexie {
         }
       })
     })
+
+    // v6: Add connection_id to tasks for two-way sync (maps task → connection → API key)
+    this.version(6).stores({
+      buckets: "id, user_id, position, is_default",
+      tasks:
+        "id, user_id, bucket_id, section, source, source_id, status, connection_id, [user_id+bucket_id], [user_id+section], [user_id+source]",
+      sessions: "id, user_id, is_active, [user_id+is_active]",
+      timeEntries: "id, session_id, user_id, task_id, started_at",
+      importRules: "id, user_id, integration_type, is_active",
+      integrationKeys: "integrationId, type",
+      connections: "id, type, isActive",
+      syncQueue: "id, table, createdAt",
+      appState: "key",
+    }).upgrade(async (tx) => {
+      // Backfill connection_id = null for all existing tasks
+      await tx.table("tasks").toCollection().modify((task: Record<string, unknown>) => {
+        if (task.connection_id === undefined) {
+          task.connection_id = null
+        }
+      })
+    })
   }
 }
 

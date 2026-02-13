@@ -84,6 +84,7 @@ export interface Database {
           status: TaskStatus
           source: TaskSource
           source_id: string | null
+          connection_id: string | null
           bucket_id: string | null
           section: SectionType
           estimate_minutes: number | null
@@ -101,6 +102,7 @@ export interface Database {
           status?: TaskStatus
           source?: TaskSource
           source_id?: string | null
+          connection_id?: string | null
           bucket_id?: string | null
           section?: SectionType
           estimate_minutes?: number | null
@@ -116,6 +118,7 @@ export interface Database {
           status?: TaskStatus
           source?: TaskSource
           source_id?: string | null
+          connection_id?: string | null
           bucket_id?: string | null
           section?: SectionType
           estimate_minutes?: number | null

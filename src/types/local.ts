@@ -32,6 +32,8 @@ export interface LocalTask {
   status: TaskStatus
   source: TaskSource
   source_id: string | null
+  /** Which integration connection imported this task (null for manual) */
+  connection_id: string | null
   bucket_id: string | null
   section: SectionType
   estimate_minutes: number | null

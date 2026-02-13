@@ -76,6 +76,59 @@ async function todoistGet<T>(
   return (await response.json()) as T
 }
 
+async function todoistPost(
+  token: string,
+  path: string,
+): Promise<void> {
+  let response: Response
+
+  try {
+    response = await fetch(`${TODOIST_API_URL}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  } catch {
+    throw new TodoistApiError(
+      "Could not reach Todoist. Check your connection.",
+      "network_error",
+    )
+  }
+
+  if (response.status === 429) {
+    throw new TodoistApiError(
+      "Todoist rate limit hit. Take a breather and try again shortly.",
+      "rate_limited",
+      429,
+    )
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new TodoistApiError(
+      "That Todoist token didn't work. Double-check and try again?",
+      "invalid_key",
+      response.status,
+    )
+  }
+
+  if (response.status >= 500) {
+    throw new TodoistApiError(
+      "Todoist is having a moment. Try again shortly.",
+      "server_error",
+      response.status,
+    )
+  }
+
+  if (!response.ok) {
+    throw new TodoistApiError(
+      `Unexpected response from Todoist (${response.status}).`,
+      "unknown",
+      response.status,
+    )
+  }
+}
+
 // ============================================================================
 // Public API functions
 // ============================================================================
@@ -140,6 +193,20 @@ export async function fetchActiveTasks(
   } while (cursor)
 
   return all
+}
+
+// ============================================================================
+// Write operations (two-way sync)
+// ============================================================================
+
+/** Close (complete) a task in Todoist. */
+export async function closeTodoistTask(token: string, taskId: string): Promise<void> {
+  await todoistPost(token, `/tasks/${taskId}/close`)
+}
+
+/** Reopen a completed task in Todoist. */
+export async function reopenTodoistTask(token: string, taskId: string): Promise<void> {
+  await todoistPost(token, `/tasks/${taskId}/reopen`)
 }
 
 // ============================================================================

@@ -1,7 +1,9 @@
 import { create } from "zustand"
+import { toast } from "sonner"
 import { db } from "@/lib/db"
 import { getCurrentUserId } from "@/lib/auth"
 import { queueSync } from "@/lib/sync"
+import { writebackCompletion } from "@/lib/writeback"
 import type { LocalTask } from "@/types/local"
 import type { SectionType } from "@/types/database"
 
@@ -21,8 +23,8 @@ interface TaskState {
   loadTasks: () => Promise<void>
   addTask: (title: string, bucketId: string, section?: SectionType) => Promise<LocalTask>
   updateTask: (id: string, updates: Partial<Pick<LocalTask, "title" | "description" | "estimate_minutes">>) => Promise<void>
-  completeTask: (id: string) => Promise<void>
-  uncompleteTask: (id: string) => Promise<void>
+  completeTask: (id: string, options?: { skipWriteback?: boolean }) => Promise<void>
+  uncompleteTask: (id: string, options?: { skipWriteback?: boolean }) => Promise<void>
   archiveTask: (id: string) => Promise<void>
   moveToSection: (id: string, section: SectionType) => Promise<void>
   moveToBucket: (id: string, bucketId: string) => Promise<void>
@@ -77,6 +79,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       status: "active",
       source: "manual",
       source_id: null,
+      connection_id: null,
       bucket_id: bucketId,
       section,
       estimate_minutes: null,
@@ -106,7 +109,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     void queueSync("tasks", "update", { id, ...updates, updated_at: now })
   },
 
-  completeTask: async (id) => {
+  completeTask: async (id, options) => {
+    const task = await db.tasks.get(id)
+    if (!task) return
+
+    // Optimistic local update
     const now = new Date().toISOString()
     await db.tasks.update(id, {
       status: "completed",
@@ -121,13 +128,27 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }))
 
     void queueSync("tasks", "update", { id, status: "completed", completed_at: now, updated_at: now })
+
+    // Two-way sync: push completion to source provider
+    if (!options?.skipWriteback && task.source !== "manual") {
+      const result = await writebackCompletion(task, true)
+      if (!result.ok) {
+        // Rollback: restore task to active
+        await db.tasks.update(id, { status: "active", completed_at: null, updated_at: now })
+        const restored = { ...task, status: "active" as const, completed_at: null, updated_at: now }
+        set((state) => ({ tasks: [...state.tasks, restored] }))
+        void queueSync("tasks", "update", { id, status: "active", completed_at: null, updated_at: now })
+        toast.error(result.error ?? "Couldn't mark this done in the source app. Try again?")
+      }
+    }
   },
 
-  uncompleteTask: async (id) => {
+  uncompleteTask: async (id, options) => {
     const now = new Date().toISOString()
     const task = await db.tasks.get(id)
     if (!task) return
 
+    // Optimistic local update
     await db.tasks.update(id, {
       status: "active",
       completed_at: null,
@@ -140,6 +161,18 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }))
 
     void queueSync("tasks", "update", { id, status: "active", completed_at: null, updated_at: now })
+
+    // Two-way sync: push reopen to source provider
+    if (!options?.skipWriteback && task.source !== "manual") {
+      const result = await writebackCompletion(task, false)
+      if (!result.ok) {
+        // Rollback: re-complete the task
+        await db.tasks.update(id, { status: "completed", completed_at: now, updated_at: now })
+        set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }))
+        void queueSync("tasks", "update", { id, status: "completed", completed_at: now, updated_at: now })
+        toast.error(result.error ?? "Couldn't reopen this in the source app. Try again?")
+      }
+    }
   },
 
   archiveTask: async (id) => {

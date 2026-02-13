@@ -250,6 +250,60 @@ async function fetchTeamAssignedIssues(
 }
 
 // ============================================================================
+// Write operations (two-way sync)
+// ============================================================================
+
+/** Linear workflow state shape returned by the API */
+export interface LinearWorkflowState {
+  id: string
+  name: string
+  type: string
+}
+
+/**
+ * Fetch all workflow states for a team.
+ * Used to find the "Done" and "Started" state IDs for writeback.
+ */
+export async function fetchWorkflowStates(
+  apiKey: string,
+  teamId: string,
+): Promise<LinearWorkflowState[]> {
+  const data = await linearQuery<{
+    team: { states: { nodes: LinearWorkflowState[] } }
+  }>(
+    apiKey,
+    `query TeamStates($teamId: String!) {
+      team(id: $teamId) {
+        states {
+          nodes { id name type }
+        }
+      }
+    }`,
+    { teamId },
+  )
+  return data.team.states.nodes
+}
+
+/**
+ * Transition a Linear issue to a new workflow state.
+ */
+export async function updateLinearIssueState(
+  apiKey: string,
+  issueId: string,
+  stateId: string,
+): Promise<void> {
+  await linearQuery<{ issueUpdate: { success: boolean } }>(
+    apiKey,
+    `mutation UpdateIssueState($issueId: String!, $stateId: String!) {
+      issueUpdate(id: $issueId, input: { stateId: $stateId }) {
+        success
+      }
+    }`,
+    { issueId, stateId },
+  )
+}
+
+// ============================================================================
 // Mapping
 // ============================================================================
 
@@ -270,6 +324,7 @@ export function mapLinearIssueToTask(
     status: "active",
     source: "linear",
     source_id: issue.id,
+    connection_id: null,
     bucket_id: null,
     section: "sooner",
     estimate_minutes: issue.estimate ? issue.estimate * 60 : null, // Linear estimate is in points, rough ~60min/point
