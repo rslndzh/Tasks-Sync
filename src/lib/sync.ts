@@ -186,10 +186,31 @@ async function resetDeadLetters(): Promise<number> {
   return dead.length
 }
 
+/**
+ * Sanitize a payload before sending to Supabase.
+ * Converts empty strings to null for UUID columns — Postgres rejects ""
+ * as invalid UUID syntax but accepts null for nullable UUID fields.
+ */
+const UUID_FIELDS = new Set([
+  "id", "user_id", "bucket_id", "connection_id", "task_id", "session_id",
+  "integration_id", "default_bucket_id", "target_bucket_id",
+])
+
+function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const cleaned = { ...payload }
+  for (const key of Object.keys(cleaned)) {
+    if (UUID_FIELDS.has(key) && cleaned[key] === "") {
+      cleaned[key] = null
+    }
+  }
+  return cleaned
+}
+
 async function pushToSupabase(item: SyncQueueItem): Promise<void> {
   if (!supabase) return
 
-  const { table, operation, payload } = item
+  const { table, operation } = item
+  const payload = sanitizePayload(item.payload)
 
   // Dynamic table name means TypeScript can't narrow the upsert/update types.
   // We use `as any` here because the payload shapes are validated at queue-time.
@@ -565,10 +586,11 @@ export async function pushAllToSupabase(userId: string): Promise<void> {
     if (error) throw error
   }
 
-  // Push tasks
+  // Push tasks (sanitize UUID fields — e.g. connection_id might be "")
   const tasks = await db.tasks.where("user_id").equals(userId).toArray()
   if (tasks.length > 0) {
-    const { error } = await client.from("tasks").upsert(tasks)
+    const cleanTasks = tasks.map((t) => sanitizePayload(t as unknown as Record<string, unknown>))
+    const { error } = await client.from("tasks").upsert(cleanTasks)
     if (error) throw error
   }
 
@@ -587,17 +609,18 @@ export async function pushAllToSupabase(userId: string): Promise<void> {
   }
 
   // Push integration connections (local → remote with field mapping)
+  // Push integration connections (sanitize UUID fields)
   const connections = await db.connections.toArray()
   if (connections.length > 0) {
-    const remoteConns = connections.map((c) => connectionToRemote(c, userId))
+    const remoteConns = connections.map((c) => sanitizePayload(connectionToRemote(c, userId)))
     const { error } = await client.from("integrations").upsert(remoteConns)
     if (error) throw error
   }
 
-  // Push import rules (local → remote with field mapping)
+  // Push import rules (sanitize UUID fields)
   const rules = await db.importRules.toArray()
   if (rules.length > 0) {
-    const remoteRules = rules.map((r) => importRuleToRemote(r, userId))
+    const remoteRules = rules.map((r) => sanitizePayload(importRuleToRemote(r, userId)))
     const { error } = await client.from("import_rules").upsert(remoteRules)
     if (error) throw error
   }

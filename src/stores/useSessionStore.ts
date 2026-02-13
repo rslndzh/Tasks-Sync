@@ -219,6 +219,34 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       .toArray()
 
     set({ todaySessions: sessions, todayTimeEntries: entries })
+
+    // Restore active session from synced data (e.g., timer started on another device).
+    // Only restore if we don't already have a local timer running.
+    const { isRunning } = get()
+    if (!isRunning) {
+      const activeSession = sessions.find((s) => s.is_active && !s.ended_at)
+      if (activeSession) {
+        const activeEntry = entries
+          .filter((e) => e.session_id === activeSession.id && !e.ended_at)
+          .sort((a, b) => b.started_at.localeCompare(a.started_at))[0]
+
+        if (activeEntry) {
+          const elapsed = Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000)
+          const intervalId = setInterval(() => get()._tick(), 1000)
+
+          set({
+            activeSession,
+            activeTimeEntry: activeEntry,
+            activeTaskId: activeEntry.task_id,
+            timerMode: "open",
+            fixedDurationMinutes: null,
+            elapsedSeconds: Math.max(0, elapsed),
+            isRunning: true,
+            timerIntervalId: intervalId,
+          })
+        }
+      }
+    }
   },
 
   _tick: () => {
