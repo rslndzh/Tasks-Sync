@@ -1,3 +1,28 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# Environment
 .env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+!.vscode/extensions.json
+.cursor/
+*.swp
+*.swo
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Supabase
+supabase/.temp/
+
+# Vite
+*.local
