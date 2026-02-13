@@ -64,7 +64,22 @@ export async function queueSync(
 const MAX_RETRIES = 3
 
 /**
+ * Table processing order — parent tables before children to satisfy FK constraints.
+ * e.g. tasks must exist before sessions that reference them.
+ */
+const TABLE_PRIORITY: Record<string, number> = {
+  buckets: 0,
+  integrations: 1,
+  import_rules: 2,
+  tasks: 3,
+  sessions: 4,
+  time_entries: 5,
+}
+
+/**
  * Process all queued mutations, pushing them to Supabase.
+ * Items are sorted by table dependency order first, then by creation time,
+ * so parent rows (tasks) are pushed before children (sessions/time_entries).
  * Retries up to 3 times per item. Failed items beyond that are marked as dead letters.
  */
 export async function flushSyncQueue(): Promise<void> {
@@ -79,6 +94,14 @@ export async function flushSyncQueue(): Promise<void> {
     useSyncStore.getState().setPendingCount(0)
     return
   }
+
+  // Sort by table dependency (parents first), then by createdAt within each table
+  items.sort((a, b) => {
+    const pa = TABLE_PRIORITY[a.table] ?? 99
+    const pb = TABLE_PRIORITY[b.table] ?? 99
+    if (pa !== pb) return pa - pb
+    return a.createdAt - b.createdAt
+  })
 
   useSyncStore.getState().setPendingCount(items.length)
 
@@ -585,33 +608,13 @@ export async function syncNow(): Promise<void> {
   try {
     await pullFromSupabase()
 
-    // Check if local data is missing from Supabase and push it.
-    // Uses upsert so it's safe even if some rows already exist.
+    // Always push all local data on manual sync. Uses upsert so it's
+    // idempotent — safe even when rows already exist. This guarantees
+    // parent rows (tasks) are in Supabase before children (sessions)
+    // and handles any partial sync gaps without fragile count comparisons.
     const userId = getCurrentUserId()
     if (userId !== "local") {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const client = supabase as any
-
-      const { count: remoteTaskCount } = await supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-      const localTaskCount = await db.tasks.where("user_id").equals(userId).count()
-
-      // Push all when remote has fewer items than local — handles partial sync
-      // failures (e.g. column didn't exist, dead-lettered items, etc.)
-      if (localTaskCount > 0 && (remoteTaskCount === null || remoteTaskCount < localTaskCount)) {
-        await pushAllToSupabase(userId)
-      } else {
-        // Tasks already fully synced. Check connections/rules independently.
-        const { count: remoteConnCount } = await client
-          .from("integrations")
-          .select("id", { count: "exact", head: true })
-        const localConnCount = await db.connections.count()
-
-        if (localConnCount > 0 && (remoteConnCount === null || remoteConnCount < localConnCount)) {
-          await pushConnectionsToSupabase(userId)
-        }
-      }
+      await pushAllToSupabase(userId)
     }
 
     await reloadStoresFromDexie()
