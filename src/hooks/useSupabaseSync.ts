@@ -77,23 +77,6 @@ export function useSupabaseSync() {
     }
   }, [user, isMigrating])
 
-  // Periodic queue flush — pushes local mutations to Supabase every 5s
-  // so other devices/browsers pick them up via Realtime.
-  useEffect(() => {
-    if (!isSupabaseConfigured || !user || !isOnline) return
-
-    const interval = setInterval(() => {
-      void flushSyncQueue().then(() => {
-        const store = useSyncStore.getState()
-        if (store.pendingCount === 0 && store.status !== "error") {
-          store.setSynced()
-        }
-      })
-    }, 5_000)
-
-    return () => clearInterval(interval)
-  }, [user, isOnline])
-
   // Flush queue when coming back online
   useEffect(() => {
     if (!isSupabaseConfigured || !user) return

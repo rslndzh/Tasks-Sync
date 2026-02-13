@@ -39,6 +39,15 @@ function extractErrorMessage(err: unknown): string {
  * Queue a mutation to be synced to Supabase when online.
  * No-op for anonymous users or when Supabase isn't configured.
  */
+/** Debounce timer for auto-flush after queueSync writes */
+let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Queue a mutation to be synced to Supabase when online.
+ * No-op for anonymous users or when Supabase isn't configured.
+ * Automatically triggers a debounced flush (~1s) so changes push
+ * to Supabase without polling or manual "Sync now".
+ */
 export async function queueSync(
   table: SyncQueueItem["table"],
   operation: SyncQueueItem["operation"],
@@ -54,6 +63,19 @@ export async function queueSync(
     createdAt: Date.now(),
     retryCount: 0,
   })
+
+  // Debounced auto-flush: batches rapid writes (e.g., multi-drag)
+  // into a single flush ~1s after the last write.
+  if (flushTimer) clearTimeout(flushTimer)
+  flushTimer = setTimeout(() => {
+    flushTimer = null
+    void flushSyncQueue().then(() => {
+      const store = useSyncStore.getState()
+      if (store.pendingCount === 0 && store.status !== "error") {
+        store.setSynced()
+      }
+    })
+  }, 1_000)
 }
 
 // ============================================================================
