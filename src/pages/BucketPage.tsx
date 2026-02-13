@@ -29,6 +29,7 @@ export function BucketPage() {
   const { bucketId } = useParams<{ bucketId: string }>()
   const navigate = useNavigate()
   const bucket = useBucketStore((s) => s.getBucket(bucketId ?? ""))
+  const isBucketsLoaded = useBucketStore((s) => s.isLoaded)
   const { updateBucket, deleteBucket } = useBucketStore()
   const tasks = useTaskStore((s) => s.tasks)
   const clearSelection = useTaskStore((s) => s.clearSelection)
@@ -43,6 +44,11 @@ export function BucketPage() {
       nameInputRef.current.select()
     }
   }, [isEditing])
+
+  // Wait for buckets to load from Dexie before deciding "not found"
+  if (!isBucketsLoaded) {
+    return null
+  }
 
   if (!bucketId || !bucket) {
     return (

@@ -428,7 +428,11 @@ export function subscribeToRealtime(): void {
     .on("postgres_changes", { event: "*", schema: "public", table: "import_rules" }, (payload) => {
       void handleRealtimeChange("import_rules", payload)
     })
-    .subscribe()
+    .subscribe((status) => {
+      if (status === "CHANNEL_ERROR") {
+        useSyncStore.getState().setError("Real-time connection failed — changes won't appear automatically.")
+      }
+    })
 }
 
 export function unsubscribeFromRealtime(): void {

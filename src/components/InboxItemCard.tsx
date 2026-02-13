@@ -1,6 +1,7 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import type { InboxItem } from "@/types/inbox"
 import { useBucketStore } from "@/stores/useBucketStore"
+import { useImportRuleStore } from "@/stores/useImportRuleStore"
 import { useDraggable } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
@@ -132,9 +133,27 @@ function extractGroupLabel(item: InboxItem): string | null {
 export function InboxItemCard({ item, connectionId, onImport }: InboxItemCardProps) {
   const buckets = useBucketStore((s) => s.buckets)
   const defaultBucket = buckets.find((b) => b.is_default) ?? buckets[0]
+  const activeRules = useImportRuleStore((s) => s.getActiveRules())
 
-  const [selectedBucket, setSelectedBucket] = useState(defaultBucket?.id ?? "")
-  const [selectedSection, setSelectedSection] = useState<"today" | "sooner" | "later">("sooner")
+  // Resolve default bucket/section from import rules, fall back to inbox/sooner
+  const ruleDefaults = useMemo(() => {
+    const meta = item.metadata as Record<string, unknown>
+    for (const rule of activeRules) {
+      if (rule.integration_type !== item.sourceType) continue
+      const filter = rule.source_filter
+      if (
+        (item.sourceType === "linear" && filter.teamId === meta.teamId) ||
+        (item.sourceType === "todoist" && filter.projectId === meta.projectId) ||
+        (item.sourceType === "attio" && (filter.listId === "all" || filter.listId === meta.listId))
+      ) {
+        return { bucketId: rule.target_bucket_id, section: rule.target_section as "today" | "sooner" | "later" }
+      }
+    }
+    return { bucketId: defaultBucket?.id ?? "", section: "sooner" as const }
+  }, [item, activeRules, defaultBucket])
+
+  const [selectedBucket, setSelectedBucket] = useState(ruleDefaults.bucketId)
+  const [selectedSection, setSelectedSection] = useState<"today" | "sooner" | "later">(ruleDefaults.section)
   const [expanded, setExpanded] = useState(false)
 
   const dragData: DragData = { type: "inbox-item", item, connectionId }
