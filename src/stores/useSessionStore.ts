@@ -220,32 +220,78 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     set({ todaySessions: sessions, todayTimeEntries: entries })
 
-    // Restore active session from synced data (e.g., timer started on another device).
-    // Only restore if we don't already have a local timer running.
-    const { isRunning } = get()
-    if (!isRunning) {
-      const activeSession = sessions.find((s) => s.is_active && !s.ended_at)
-      if (activeSession) {
-        const activeEntry = entries
-          .filter((e) => e.session_id === activeSession.id && !e.ended_at)
+    // Reconcile active session from synced data so cross-device start/stop
+    // is reflected locally, even when this tab already has a running timer.
+    const remoteActiveSession = sessions.find((s) => s.is_active && !s.ended_at)
+    const remoteActiveEntry = remoteActiveSession
+      ? entries
+          .filter((e) => e.session_id === remoteActiveSession.id && !e.ended_at)
           .sort((a, b) => b.started_at.localeCompare(a.started_at))[0]
+      : undefined
 
-        if (activeEntry) {
-          const elapsed = Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000)
-          const intervalId = setInterval(() => get()._tick(), 1000)
+    const {
+      isRunning,
+      activeSession: localActiveSession,
+      timerIntervalId,
+    } = get()
 
-          set({
-            activeSession,
-            activeTimeEntry: activeEntry,
-            activeTaskId: activeEntry.task_id,
-            timerMode: "open",
-            fixedDurationMinutes: null,
-            elapsedSeconds: Math.max(0, elapsed),
-            isRunning: true,
-            timerIntervalId: intervalId,
-          })
-        }
+    // Remote has no active timer: stop any stale local timer state.
+    if ((!remoteActiveSession || !remoteActiveEntry) && isRunning) {
+      if (timerIntervalId) clearInterval(timerIntervalId)
+      set({
+        activeSession: null,
+        activeTimeEntry: null,
+        activeTaskId: null,
+        elapsedSeconds: 0,
+        isRunning: false,
+        timerIntervalId: null,
+        fixedDurationMinutes: null,
+      })
+      return
+    }
+
+    // Remote has an active timer: start locally if needed, or switch/refresh.
+    if (remoteActiveSession && remoteActiveEntry) {
+      const elapsed = Math.floor((Date.now() - new Date(remoteActiveSession.started_at).getTime()) / 1000)
+
+      if (!isRunning) {
+        const intervalId = setInterval(() => get()._tick(), 1000)
+        set({
+          activeSession: remoteActiveSession,
+          activeTimeEntry: remoteActiveEntry,
+          activeTaskId: remoteActiveEntry.task_id,
+          timerMode: "open",
+          fixedDurationMinutes: null,
+          elapsedSeconds: Math.max(0, elapsed),
+          isRunning: true,
+          timerIntervalId: intervalId,
+        })
+        return
       }
+
+      if (localActiveSession?.id !== remoteActiveSession.id) {
+        if (timerIntervalId) clearInterval(timerIntervalId)
+        const intervalId = setInterval(() => get()._tick(), 1000)
+        set({
+          activeSession: remoteActiveSession,
+          activeTimeEntry: remoteActiveEntry,
+          activeTaskId: remoteActiveEntry.task_id,
+          timerMode: "open",
+          fixedDurationMinutes: null,
+          elapsedSeconds: Math.max(0, elapsed),
+          isRunning: true,
+          timerIntervalId: intervalId,
+        })
+        return
+      }
+
+      // Same active session, refresh local references/time from authoritative data.
+      set({
+        activeSession: remoteActiveSession,
+        activeTimeEntry: remoteActiveEntry,
+        activeTaskId: remoteActiveEntry.task_id,
+        elapsedSeconds: Math.max(0, elapsed),
+      })
     }
   },
 
