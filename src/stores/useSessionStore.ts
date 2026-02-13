@@ -205,9 +205,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     startOfDay.setHours(0, 0, 0, 0)
     const startIso = startOfDay.toISOString()
 
+    const userId = getCurrentUserId()
     const sessions = await db.sessions
       .where("user_id")
-      .equals("local")
+      .equals(userId)
       .filter((s) => s.created_at >= startIso)
       .toArray()
 
