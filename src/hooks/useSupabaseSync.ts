@@ -12,8 +12,6 @@ import {
   pushAllToSupabase,
 } from "@/lib/sync"
 import { getCurrentUserId } from "@/lib/auth"
-import { supabase } from "@/lib/supabase"
-import { db } from "@/lib/db"
 
 /**
  * Orchestrates the Supabase sync lifecycle.
@@ -45,32 +43,11 @@ export function useSupabaseSync() {
       try {
         await pullFromSupabase()
 
-        // If data never landed in Supabase, push local data now.
+        // Always push all local data on initial sync to ensure Supabase
+        // has everything (uses upsert, safe for existing rows).
         const userId = getCurrentUserId()
-        if (userId !== "local" && supabase) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const client = supabase as any
-
-          const { count: remoteTaskCount } = await supabase
-            .from("tasks")
-            .select("id", { count: "exact", head: true })
-          const localTaskCount = await db.tasks.where("user_id").equals(userId).count()
-
-          if ((remoteTaskCount === null || remoteTaskCount === 0) && localTaskCount > 0) {
-            await pushAllToSupabase(userId)
-          } else {
-            // Tasks synced but connections may not be — check independently
-            const { count: remoteConnCount } = await client
-              .from("integrations")
-              .select("id", { count: "exact", head: true })
-            const localConnCount = await db.connections.count()
-
-            if ((remoteConnCount === null || remoteConnCount === 0) && localConnCount > 0) {
-              // Push just connections + rules
-              const { pushConnectionsToSupabase } = await import("@/lib/sync")
-              await pushConnectionsToSupabase(userId)
-            }
-          }
+        if (userId !== "local") {
+          await pushAllToSupabase(userId)
         }
 
         await reloadStoresFromDexie()
@@ -99,6 +76,23 @@ export function useSupabaseSync() {
       hasSyncedRef.current = false
     }
   }, [user, isMigrating])
+
+  // Periodic queue flush — pushes local mutations to Supabase every 5s
+  // so other devices/browsers pick them up via Realtime.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user || !isOnline) return
+
+    const interval = setInterval(() => {
+      void flushSyncQueue().then(() => {
+        const store = useSyncStore.getState()
+        if (store.pendingCount === 0 && store.status !== "error") {
+          store.setSynced()
+        }
+      })
+    }, 5_000)
+
+    return () => clearInterval(interval)
+  }, [user, isOnline])
 
   // Flush queue when coming back online
   useEffect(() => {
