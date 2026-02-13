@@ -215,6 +215,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
           const task = mapInboxItemToLocalTask(item, userId, targetBucketId, targetSection, position)
           await db.tasks.put(task)
+          void queueSync("tasks", "insert", task as unknown as Record<string, unknown>)
           autoImportedIds.add(item.id)
         }
       }
@@ -286,6 +287,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
     const task = mapInboxItemToLocalTask(item, userId, bucketId, section, position)
     await db.tasks.put(task)
+    void queueSync("tasks", "insert", task as unknown as Record<string, unknown>)
 
     // Remove from inbox
     set((s) => {

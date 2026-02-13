@@ -14,6 +14,7 @@ import { sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useConnectionStore } from "@/stores/useConnectionStore"
+import { useImportRuleStore } from "@/stores/useImportRuleStore"
 import { TaskDragOverlayContent, InboxDragOverlayContent } from "@/components/TaskDragOverlay"
 import { parseDroppableId } from "@/lib/dnd-types"
 import type { DragData } from "@/lib/dnd-types"
@@ -171,10 +172,27 @@ export function DndProvider({ children }: DndProviderProps) {
 
       const conn = connections.find((c) => c.id === data.connectionId)
 
+      // Resolve bucket via import rules first, then connection default, then drop target
+      const resolveRuleBucket = (fallbackBucketId: string): string => {
+        const rules = useImportRuleStore.getState().getActiveRules()
+        const item = data.item as InboxItem
+        const meta = item.metadata as Record<string, unknown>
+        const matched = rules.find((r) => {
+          if (r.integration_type !== item.sourceType) return false
+          switch (item.sourceType) {
+            case "linear": return r.source_filter.teamId === meta.teamId
+            case "todoist": return r.source_filter.projectId === meta.projectId
+            case "attio": return r.source_filter.listId === "all" || r.source_filter.listId === meta.listId
+            default: return false
+          }
+        })
+        return matched?.target_bucket_id ?? conn?.defaultBucketId ?? fallbackBucketId
+      }
+
       // Dropped onto a task — insert at that task's position
       if (overData && "type" in overData && overData.type === "task") {
         const overTask = (overData as DragData & { type: "task" }).task
-        const bucketId = conn?.defaultBucketId ?? overTask.bucket_id ?? ""
+        const bucketId = resolveRuleBucket(overTask.bucket_id ?? "")
         const section = overTask.section as "today" | "sooner" | "later"
         void importItem(data.connectionId, data.item, bucketId, section, overTask.position)
           .then(() => store.loadTasks())
@@ -184,7 +202,7 @@ export function DndProvider({ children }: DndProviderProps) {
 
       // Dropped onto a section or bucket droppable — append at end
       if (target) {
-        const resolvedBucketId = conn?.defaultBucketId ?? target.bucketId
+        const resolvedBucketId = resolveRuleBucket(target.bucketId)
         if (target.kind === "section") {
           void importItem(data.connectionId, data.item, resolvedBucketId, target.section).then(() => store.loadTasks())
         } else if (target.kind === "bucket") {

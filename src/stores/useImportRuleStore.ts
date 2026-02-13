@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { db } from "@/lib/db"
 import { getCurrentUserId } from "@/lib/auth"
+import { queueSync } from "@/lib/sync"
 import type { ImportRule, ImportRuleSourceFilter } from "@/types/import-rule"
 import type { IntegrationType, SectionType } from "@/types/database"
 
@@ -61,6 +62,17 @@ export const useImportRuleStore = create<ImportRuleState>((set, get) => ({
     }
 
     await db.importRules.put(rule)
+    void queueSync("import_rules", "insert", {
+      id: rule.id,
+      user_id: rule.user_id,
+      integration_type: rule.integration_type,
+      source_filter: rule.source_filter,
+      target_bucket_id: rule.target_bucket_id,
+      target_section: rule.target_section,
+      is_active: rule.is_active,
+      created_at: rule.created_at,
+      updated_at: rule.updated_at,
+    })
     set((state) => ({ rules: [...state.rules, rule] }))
     return rule
   },
@@ -68,6 +80,7 @@ export const useImportRuleStore = create<ImportRuleState>((set, get) => ({
   updateRule: async (id, updates) => {
     const now = new Date().toISOString()
     await db.importRules.update(id, { ...updates, updated_at: now })
+    void queueSync("import_rules", "update", { id, ...updates, updated_at: now })
 
     set((state) => ({
       rules: state.rules.map((r) =>
@@ -78,6 +91,7 @@ export const useImportRuleStore = create<ImportRuleState>((set, get) => ({
 
   deleteRule: async (id) => {
     await db.importRules.delete(id)
+    void queueSync("import_rules", "delete", { id })
     set((state) => ({
       rules: state.rules.filter((r) => r.id !== id),
     }))
