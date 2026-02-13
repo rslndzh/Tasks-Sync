@@ -45,9 +45,18 @@ export function BucketPage() {
     }
   }, [isEditing])
 
+  // useCallback must be called before any conditional returns (React hooks rule)
+  const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) clearSelection()
+  }, [clearSelection])
+
   // Wait for buckets to load from Dexie before deciding "not found"
   if (!isBucketsLoaded) {
-    return null
+    return (
+      <div className="flex h-full flex-col items-center justify-center">
+        <p className="text-sm text-muted-foreground animate-pulse">Loading…</p>
+      </div>
+    )
   }
 
   if (!bucketId || !bucket) {
@@ -87,10 +96,6 @@ export function BucketPage() {
     await deleteBucket(bucket!.id)
     navigate("/")
   }
-
-  const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) clearSelection()
-  }, [clearSelection])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-4 md:p-6" onClick={handleBackgroundClick}>

@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react"
 import type { InboxItem } from "@/types/inbox"
+import type { ImportRule } from "@/types/import-rule"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useImportRuleStore } from "@/stores/useImportRuleStore"
 import { useDraggable } from "@dnd-kit/core"
@@ -133,7 +134,8 @@ function extractGroupLabel(item: InboxItem): string | null {
 export function InboxItemCard({ item, connectionId, onImport }: InboxItemCardProps) {
   const buckets = useBucketStore((s) => s.buckets)
   const defaultBucket = buckets.find((b) => b.is_default) ?? buckets[0]
-  const activeRules = useImportRuleStore((s) => s.getActiveRules())
+  const rules = useImportRuleStore((s) => s.rules)
+  const activeRules = useMemo<ImportRule[]>(() => rules.filter((r) => r.is_active), [rules])
 
   // Resolve default bucket/section from import rules, fall back to inbox/sooner
   const ruleDefaults = useMemo(() => {
