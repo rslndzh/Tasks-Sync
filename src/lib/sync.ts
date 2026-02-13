@@ -127,6 +127,20 @@ export async function clearDeadLetters(): Promise<void> {
   await db.syncQueue.bulkDelete(dead.map((d) => d.id))
 }
 
+/**
+ * Reset dead-lettered items so they get another chance.
+ * Called during manual "Sync now" — the migration or schema fix may have
+ * resolved the original failure.
+ */
+async function resetDeadLetters(): Promise<number> {
+  const dead = await db.syncQueue
+    .filter((item) => item.retryCount >= MAX_RETRIES)
+    .toArray()
+  if (dead.length === 0) return 0
+  await Promise.all(dead.map((d) => db.syncQueue.update(d.id, { retryCount: 0 })))
+  return dead.length
+}
+
 async function pushToSupabase(item: SyncQueueItem): Promise<void> {
   if (!supabase) return
 
@@ -250,11 +264,12 @@ export async function pullFromSupabase(): Promise<void> {
       await db.buckets.bulkPut(remoteBuckets)
     }
 
-    // Pull active tasks
+    // Pull all tasks (active + recently completed) to sync status changes
+    // across devices. Without this, completions on one device won't reflect
+    // on another because we'd only pull "active" and miss the status flip.
     const { data: remoteTasks, error: tasksError } = await supabase
       .from("tasks")
       .select("*")
-      .in("status", ["active"])
 
     if (tasksError) throw tasksError
     if (remoteTasks?.length) {
@@ -570,9 +585,8 @@ export async function syncNow(): Promise<void> {
   try {
     await pullFromSupabase()
 
-    // Check if data never landed in Supabase (e.g., tables were missing
-    // when user first signed up, or new tables were added later).
-    // Push any local data that's missing remotely.
+    // Check if local data is missing from Supabase and push it.
+    // Uses upsert so it's safe even if some rows already exist.
     const userId = getCurrentUserId()
     if (userId !== "local") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -583,23 +597,28 @@ export async function syncNow(): Promise<void> {
         .select("id", { count: "exact", head: true })
       const localTaskCount = await db.tasks.where("user_id").equals(userId).count()
 
-      if ((remoteTaskCount === null || remoteTaskCount === 0) && localTaskCount > 0) {
-        // Full push — nothing is remote yet
+      // Push all when remote has fewer items than local — handles partial sync
+      // failures (e.g. column didn't exist, dead-lettered items, etc.)
+      if (localTaskCount > 0 && (remoteTaskCount === null || remoteTaskCount < localTaskCount)) {
         await pushAllToSupabase(userId)
       } else {
-        // Tasks already synced. Check connections/rules independently.
+        // Tasks already fully synced. Check connections/rules independently.
         const { count: remoteConnCount } = await client
           .from("integrations")
           .select("id", { count: "exact", head: true })
         const localConnCount = await db.connections.count()
 
-        if ((remoteConnCount === null || remoteConnCount === 0) && localConnCount > 0) {
+        if (localConnCount > 0 && (remoteConnCount === null || remoteConnCount < localConnCount)) {
           await pushConnectionsToSupabase(userId)
         }
       }
     }
 
     await reloadStoresFromDexie()
+
+    // Reset dead-lettered queue items — the original failure (e.g., missing
+    // column) may have been fixed since the last attempt.
+    await resetDeadLetters()
     await flushSyncQueue()
 
     // If flushSyncQueue set an error, don't overwrite it with "synced"

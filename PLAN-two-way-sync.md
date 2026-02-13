@@ -1,6 +1,6 @@
 # Two-Way Integration Sync
 
-**Overall Progress:** `0%`
+**Overall Progress:** `100%`
 
 ## TLDR
 Complete a task in Flowpin and it closes in Todoist/Linear/Attio; complete it there and it closes here — true bidirectional sync across all three providers.
