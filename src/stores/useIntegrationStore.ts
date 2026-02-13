@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { db } from "@/lib/db"
+import { queueSync } from "@/lib/sync"
 import type { IntegrationKey } from "@/types/local"
 import type { LinearTeam, LinearUser } from "@/types/linear"
 import { validateApiKey, fetchTeams, fetchAssignedIssues, mapLinearIssueToTask } from "@/integrations/linear"
@@ -143,6 +144,7 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
     task.position = taskCount
 
     await db.tasks.put(task)
+    void queueSync("tasks", "insert", task as unknown as Record<string, unknown>)
 
     // Remove from linearIssues
     set((state) => ({

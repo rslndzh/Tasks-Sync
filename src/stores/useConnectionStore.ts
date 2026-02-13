@@ -278,6 +278,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       await Promise.all(
         tasksToShift.map((t) => db.tasks.update(t.id, { position: t.position + 1 })),
       )
+      for (const t of tasksToShift) {
+        void queueSync("tasks", "update", { id: t.id, position: t.position + 1 })
+      }
     }
 
     const position = insertPosition ?? await db.tasks

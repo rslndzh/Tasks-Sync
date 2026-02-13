@@ -45,6 +45,7 @@ export const useBucketStore = create<BucketState>((set, get) => ({
           updated_at: new Date().toISOString(),
         }
         await db.buckets.put(inbox)
+        void queueSync("buckets", "insert", { ...inbox })
         return [inbox]
       }
 
@@ -97,7 +98,11 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     // Move orphaned tasks to Inbox
     const defaultBucket = get().getDefaultBucket()
     if (defaultBucket) {
+      const orphanedTasks = await db.tasks.where("bucket_id").equals(id).toArray()
       await db.tasks.where("bucket_id").equals(id).modify({ bucket_id: defaultBucket.id })
+      for (const t of orphanedTasks) {
+        void queueSync("tasks", "update", { id: t.id, bucket_id: defaultBucket.id })
+      }
     }
 
     await db.buckets.delete(id)
