@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { db } from "@/lib/db"
 import { getCurrentUserId } from "@/lib/auth"
+import { queueSync } from "@/lib/sync"
 import type { IntegrationConnection } from "@/types/local"
 import type { IntegrationType } from "@/types/database"
 import type { InboxItem } from "@/types/inbox"
@@ -60,6 +61,24 @@ interface ConnectionState {
 
 const DEFAULT_SYNC: ConnectionSyncState = { isSyncing: false, lastSyncedAt: null, error: null }
 
+/** Convert a local IntegrationConnection to a Supabase-compatible row for queueSync */
+function toRemotePayload(conn: IntegrationConnection): Record<string, unknown> {
+  const userId = getCurrentUserId()
+  return {
+    id: conn.id,
+    user_id: userId,
+    type: conn.type,
+    api_key: conn.apiKey,
+    label: conn.label,
+    metadata: conn.metadata,
+    is_active: conn.isActive,
+    default_bucket_id: conn.defaultBucketId,
+    default_section: conn.defaultSection ?? "sooner",
+    auto_import: conn.autoImport,
+    created_at: conn.created_at,
+  }
+}
+
 export const useConnectionStore = create<ConnectionState>((set, get) => ({
   connections: [],
   isLoaded: false,
@@ -101,6 +120,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     }
     await db.connections.put(conn)
     set((s) => ({ connections: [...s.connections, conn] }))
+    void queueSync("integrations", "insert", toRemotePayload(conn))
     return conn
   },
 
@@ -117,6 +137,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         syncStates: syncNext,
       }
     })
+    void queueSync("integrations", "delete", { id })
   },
 
   updateConnection: async (id, updates) => {
@@ -126,6 +147,16 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         c.id === id ? { ...c, ...updates } : c,
       ),
     }))
+    // Map camelCase updates to snake_case for Supabase
+    const remoteUpdates: Record<string, unknown> = { id }
+    if (updates.label !== undefined) remoteUpdates.label = updates.label
+    if (updates.apiKey !== undefined) remoteUpdates.api_key = updates.apiKey
+    if (updates.isActive !== undefined) remoteUpdates.is_active = updates.isActive
+    if (updates.metadata !== undefined) remoteUpdates.metadata = updates.metadata
+    if (updates.defaultBucketId !== undefined) remoteUpdates.default_bucket_id = updates.defaultBucketId
+    if (updates.defaultSection !== undefined) remoteUpdates.default_section = updates.defaultSection
+    if (updates.autoImport !== undefined) remoteUpdates.auto_import = updates.autoImport
+    void queueSync("integrations", "update", remoteUpdates)
   },
 
   // =========================================================================
@@ -325,9 +356,9 @@ async function syncLinearConnection(conn: IntegrationConnection): Promise<InboxI
   const issues = await fetchAssignedIssues(conn.apiKey, undefined, stateFilter)
 
   // Update connection metadata with latest user/teams info (preserve stateTypes setting)
-  await db.connections.update(conn.id, {
-    metadata: { ...conn.metadata, user, teams },
-  })
+  const updatedMetadata = { ...conn.metadata, user, teams }
+  await db.connections.update(conn.id, { metadata: updatedMetadata })
+  void queueSync("integrations", "update", { id: conn.id, metadata: updatedMetadata })
 
   return issues.map((issue) => mapLinearIssueToInboxItem(issue, conn.id))
 }
@@ -341,9 +372,9 @@ async function syncTodoistConnection(conn: IntegrationConnection): Promise<Inbox
   const projectMap = new Map(projects.map((p) => [p.id, p.name]))
 
   // Update connection metadata
-  await db.connections.update(conn.id, {
-    metadata: { projects },
-  })
+  const updatedMetadata = { projects }
+  await db.connections.update(conn.id, { metadata: updatedMetadata })
+  void queueSync("integrations", "update", { id: conn.id, metadata: updatedMetadata })
 
   return tasks.map((task) =>
     mapTodoistTaskToInboxItem(task, conn.id, projectMap.get(task.project_id)),
@@ -355,9 +386,9 @@ async function syncAttioConnection(conn: IntegrationConnection): Promise<InboxIt
   const tasks = await fetchAttioTasks(conn.apiKey)
 
   // Update connection metadata
-  await db.connections.update(conn.id, {
-    metadata: { taskCount: tasks.length },
-  })
+  const updatedMetadata = { taskCount: tasks.length }
+  await db.connections.update(conn.id, { metadata: updatedMetadata })
+  void queueSync("integrations", "update", { id: conn.id, metadata: updatedMetadata })
 
   return tasks.map((task) => mapAttioTaskToInboxItem(task, conn.id))
 }

@@ -68,14 +68,19 @@ CREATE TABLE tasks (
   UNIQUE(user_id, source, source_id)
 );
 
--- Integration connections (metadata only, NOT API keys)
+-- Integration connections (synced across devices, including API keys)
 CREATE TABLE integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles ON DELETE CASCADE,
   type integration_type NOT NULL,
+  api_key TEXT,
+  label TEXT,
   metadata JSONB NOT NULL DEFAULT '{}',
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   last_synced_at TIMESTAMPTZ,
+  default_bucket_id UUID REFERENCES buckets ON DELETE SET NULL,
+  default_section section_type DEFAULT 'sooner',
+  auto_import BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -84,7 +89,8 @@ CREATE TABLE integrations (
 CREATE TABLE import_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles ON DELETE CASCADE,
-  integration_id UUID NOT NULL REFERENCES integrations ON DELETE CASCADE,
+  integration_id UUID REFERENCES integrations ON DELETE CASCADE,
+  integration_type integration_type,
   source_filter JSONB NOT NULL,
   target_bucket_id UUID REFERENCES buckets ON DELETE SET NULL,
   target_section section_type NOT NULL DEFAULT 'sooner',
@@ -273,6 +279,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE buckets;
 ALTER PUBLICATION supabase_realtime ADD TABLE tasks;
 ALTER PUBLICATION supabase_realtime ADD TABLE sessions;
 ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;
+ALTER PUBLICATION supabase_realtime ADD TABLE integrations;
+ALTER PUBLICATION supabase_realtime ADD TABLE import_rules;
 
 -- ============================================================================
 -- BACKFILL: Create profile for any existing auth users (created before this schema)

@@ -129,9 +129,14 @@ export interface Database {
           id: string
           user_id: string
           type: IntegrationType
+          api_key: string | null
+          label: string | null
           metadata: Record<string, unknown>
           is_active: boolean
           last_synced_at: string | null
+          default_bucket_id: string | null
+          default_section: SectionType
+          auto_import: boolean
           created_at: string
           updated_at: string
         }
@@ -139,17 +144,27 @@ export interface Database {
           id?: string
           user_id: string
           type: IntegrationType
+          api_key?: string | null
+          label?: string | null
           metadata?: Record<string, unknown>
           is_active?: boolean
           last_synced_at?: string | null
+          default_bucket_id?: string | null
+          default_section?: SectionType
+          auto_import?: boolean
           created_at?: string
           updated_at?: string
         }
         Update: {
           type?: IntegrationType
+          api_key?: string | null
+          label?: string | null
           metadata?: Record<string, unknown>
           is_active?: boolean
           last_synced_at?: string | null
+          default_bucket_id?: string | null
+          default_section?: SectionType
+          auto_import?: boolean
           updated_at?: string
         }
       }
@@ -157,7 +172,8 @@ export interface Database {
         Row: {
           id: string
           user_id: string
-          integration_id: string
+          integration_id: string | null
+          integration_type: IntegrationType | null
           source_filter: Record<string, unknown>
           target_bucket_id: string | null
           target_section: SectionType
@@ -168,7 +184,8 @@ export interface Database {
         Insert: {
           id?: string
           user_id: string
-          integration_id: string
+          integration_id?: string | null
+          integration_type?: IntegrationType | null
           source_filter: Record<string, unknown>
           target_bucket_id?: string | null
           target_section?: SectionType
@@ -177,7 +194,8 @@ export interface Database {
           updated_at?: string
         }
         Update: {
-          integration_id?: string
+          integration_id?: string | null
+          integration_type?: IntegrationType | null
           source_filter?: Record<string, unknown>
           target_bucket_id?: string | null
           target_section?: SectionType
