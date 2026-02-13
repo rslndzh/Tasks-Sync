@@ -77,6 +77,21 @@ export function useSupabaseSync() {
     }
   }, [user, isMigrating])
 
+  // Periodic pull — reliable fallback for when Realtime drops silently.
+  // Pulls remote changes every 30s so cross-device sync is eventually
+  // consistent even if the WebSocket connection is lost.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user || !isOnline) return
+
+    const interval = setInterval(() => {
+      void pullFromSupabase()
+        .then(() => reloadStoresFromDexie())
+        .catch(() => {/* silent — next interval will retry */})
+    }, 30_000)
+
+    return () => clearInterval(interval)
+  }, [user, isOnline])
+
   // Flush queue when coming back online
   useEffect(() => {
     if (!isSupabaseConfigured || !user) return

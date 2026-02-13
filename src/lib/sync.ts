@@ -428,9 +428,16 @@ export function subscribeToRealtime(): void {
     .on("postgres_changes", { event: "*", schema: "public", table: "import_rules" }, (payload) => {
       void handleRealtimeChange("import_rules", payload)
     })
-    .subscribe((status) => {
-      if (status === "CHANNEL_ERROR") {
-        useSyncStore.getState().setError("Real-time connection failed — changes won't appear automatically.")
+    .subscribe((status, _err) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        // Attempt to reconnect after a delay
+        setTimeout(() => {
+          if (realtimeChannel && supabase) {
+            void supabase.removeChannel(realtimeChannel)
+            realtimeChannel = null
+            subscribeToRealtime()
+          }
+        }, 5_000)
       }
     })
 }
