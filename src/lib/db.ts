@@ -119,6 +119,32 @@ class FlowpinDB extends Dexie {
         }
       })
     })
+
+    // v7: Clean up empty-string UUIDs → null (Postgres rejects "" as UUID)
+    this.version(7).stores({
+      buckets: "id, user_id, position, is_default",
+      tasks:
+        "id, user_id, bucket_id, section, source, source_id, status, connection_id, [user_id+bucket_id], [user_id+section], [user_id+source]",
+      sessions: "id, user_id, is_active, [user_id+is_active]",
+      timeEntries: "id, session_id, user_id, task_id, started_at",
+      importRules: "id, user_id, integration_type, is_active",
+      integrationKeys: "integrationId, type",
+      connections: "id, type, isActive",
+      syncQueue: "id, table, createdAt",
+      appState: "key",
+    }).upgrade(async (tx) => {
+      // Fix tasks: connection_id "" → null
+      await tx.table("tasks").toCollection().modify((task: Record<string, unknown>) => {
+        if (task.connection_id === "" || task.connection_id === undefined) {
+          task.connection_id = null
+        }
+      })
+      // Fix connections: defaultBucketId "" → null
+      await tx.table("connections").toCollection().modify((conn: Record<string, unknown>) => {
+        if (conn.defaultBucketId === "") conn.defaultBucketId = null
+        if (conn.defaultSection === "") conn.defaultSection = null
+      })
+    })
   }
 }
 

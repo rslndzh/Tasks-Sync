@@ -172,7 +172,7 @@ export function DndProvider({ children }: DndProviderProps) {
 
       const conn = connections.find((c) => c.id === data.connectionId)
 
-      // Resolve bucket via import rules first, then connection default, then drop target
+      // Resolve bucket via import rules first, then connection default, then Inbox
       const resolveRuleBucket = (fallbackBucketId: string): string => {
         const rules = useImportRuleStore.getState().getActiveRules()
         const item = data.item as InboxItem
@@ -186,7 +186,12 @@ export function DndProvider({ children }: DndProviderProps) {
             default: return false
           }
         })
-        return matched?.target_bucket_id ?? conn?.defaultBucketId ?? fallbackBucketId
+        if (matched) return matched.target_bucket_id
+        if (conn?.defaultBucketId) return conn.defaultBucketId
+        if (fallbackBucketId) return fallbackBucketId
+        // Last resort: default Inbox bucket
+        const inbox = useBucketStore.getState().getDefaultBucket()
+        return inbox?.id ?? fallbackBucketId
       }
 
       // Dropped onto a task — insert at that task's position

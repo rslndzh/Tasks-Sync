@@ -1,7 +1,10 @@
 import { useEffect } from "react"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useTaskStore } from "@/stores/useTaskStore"
+import { useBucketStore } from "@/stores/useBucketStore"
 import { formatTime } from "@/components/Timer"
+import { PROVIDER_ICON_MAP } from "@/components/icons/ProviderIcons"
+import type { TaskSource } from "@/types/database"
 
 const HOUR_HEIGHT = 48 // pixels per hour
 const START_HOUR = 6 // 6 AM
@@ -9,7 +12,7 @@ const END_HOUR = 24 // midnight
 const TOTAL_HOURS = END_HOUR - START_HOUR
 
 /**
- * Generate a consistent color from a string (task ID).
+ * Fallback: generate a consistent color from a string (task ID).
  */
 function hashColor(str: string): string {
   let hash = 0
@@ -28,6 +31,7 @@ export function CalendarRail() {
   const { todaySessions, todayTimeEntries, isRunning, loadTodaySessions } =
     useSessionStore()
   const tasks = useTaskStore((s) => s.tasks)
+  const buckets = useBucketStore((s) => s.buckets)
 
   useEffect(() => {
     void loadTodaySessions()
@@ -133,8 +137,16 @@ export function CalendarRail() {
             )
 
             const task = tasks.find((t) => t.id === entry.task_id)
-            const color = hashColor(entry.task_id)
+            // Use bucket color if available, fall back to hash-based color
+            const bucket = task?.bucket_id ? buckets.find((b) => b.id === task.bucket_id) : undefined
+            const color = bucket?.color ?? hashColor(entry.task_id)
             const isActive = !entry.ended_at
+
+            // Resolve provider icon for integration tasks
+            const providerSource = task?.source as TaskSource | undefined
+            const ProviderIcon = providerSource && providerSource !== "manual"
+              ? PROVIDER_ICON_MAP[providerSource]
+              : null
 
             return (
               <div
@@ -144,14 +156,17 @@ export function CalendarRail() {
                   top: `${top}px`,
                   height: `${height}px`,
                   backgroundColor: color,
-                  opacity: 0.8,
+                  opacity: 0.85,
                 }}
                 title={`${task?.title ?? "Task"} — ${formatTime(entry.duration_seconds ?? Math.round((Date.now() - entryStart.getTime()) / 1000))}`}
               >
                 {height > 16 && (
-                  <p className="truncate px-1 py-0.5 text-[9px] font-medium text-white">
-                    {task?.title ?? "Task"}
-                  </p>
+                  <div className="flex items-center gap-0.5 px-1 py-0.5">
+                    {ProviderIcon && <ProviderIcon className="size-3 shrink-0 brightness-0 invert" />}
+                    <p className="truncate text-[9px] font-medium text-white">
+                      {task?.title ?? "Task"}
+                    </p>
+                  </div>
                 )}
                 {/* Growing edge animation for active entry */}
                 {isActive && (

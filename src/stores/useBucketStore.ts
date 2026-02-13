@@ -49,6 +49,29 @@ export const useBucketStore = create<BucketState>((set, get) => ({
         return [inbox]
       }
 
+      // Deduplicate default Inbox buckets — sync across devices can
+      // create multiple "Inbox" entries when each browser creates one
+      // with a different UUID. Keep the oldest, delete the rest.
+      const defaults = existing.filter((b) => b.is_default)
+      if (defaults.length > 1) {
+        defaults.sort((a, b) => a.created_at.localeCompare(b.created_at))
+        const keeper = defaults[0]
+        const dupes = defaults.slice(1)
+
+        for (const dupe of dupes) {
+          // Re-assign any tasks from the duplicate to the keeper
+          const orphaned = await db.tasks.where("bucket_id").equals(dupe.id).toArray()
+          for (const t of orphaned) {
+            await db.tasks.update(t.id, { bucket_id: keeper.id })
+            void queueSync("tasks", "update", { id: t.id, bucket_id: keeper.id })
+          }
+          await db.buckets.delete(dupe.id)
+          void queueSync("buckets", "delete", { id: dupe.id })
+        }
+
+        return existing.filter((b) => !dupes.some((d) => d.id === b.id))
+      }
+
       return existing
     })
 
