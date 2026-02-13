@@ -56,7 +56,6 @@ export function TaskPage() {
   const fromPath = (location.state as { from?: string } | null)?.from
 
   const task = tasks.find((t) => t.id === taskId)
-  const bucket = buckets.find((b) => b.id === task?.bucket_id)
   const isActiveInSession = isRunning && activeTaskId === taskId
 
   // Derive back label from the page the user navigated from

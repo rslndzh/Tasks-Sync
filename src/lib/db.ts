@@ -120,6 +120,7 @@ export async function getOrCreateDeviceId(): Promise<string> {
     timerStartedAt: null,
     currentView: "today",
     deviceId,
+    rightRailPanel: null,
   })
 
   return deviceId

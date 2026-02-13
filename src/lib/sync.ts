@@ -129,22 +129,27 @@ async function pushToSupabase(item: SyncQueueItem): Promise<void> {
 
   const { table, operation, payload } = item
 
+  // Dynamic table name means TypeScript can't narrow the upsert/update types.
+  // We use `as any` here because the payload shapes are validated at queue-time.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = supabase as any
+
   switch (operation) {
     case "insert": {
       // Use upsert to handle conflicts (e.g., duplicate Inbox bucket)
-      const { error } = await supabase.from(table).upsert(payload)
+      const { error } = await client.from(table).upsert(payload)
       if (error) throw error
       break
     }
     case "update": {
       const { id, ...rest } = payload
-      const { error } = await supabase.from(table).update(rest).eq("id", id as string)
+      const { error } = await client.from(table).update(rest).eq("id", id as string)
       // Ignore 404-style errors — the row might have been deleted on server
       if (error && error.code !== "PGRST116") throw error
       break
     }
     case "delete": {
-      const { error } = await supabase.from(table).delete().eq("id", payload.id as string)
+      const { error } = await client.from(table).delete().eq("id", payload.id as string)
       // Ignore "not found" errors on delete — already gone server-side
       if (error && error.code !== "PGRST116") throw error
       break
@@ -343,35 +348,40 @@ export async function migrateLocalData(userId: string): Promise<void> {
 export async function pushAllToSupabase(userId: string): Promise<void> {
   if (!supabase) return
 
+  // Local types match Supabase schema but TypeScript can't verify the
+  // structural overlap, so we cast via `any` for the upsert calls.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = supabase as any
+
   // Delete the trigger-created default Inbox bucket on Supabase
   // (we'll push our local one which has the user's real data)
-  await supabase.from("buckets").delete().eq("user_id", userId).eq("is_default", true)
+  await client.from("buckets").delete().eq("user_id", userId).eq("is_default", true)
 
   // Push buckets
   const buckets = await db.buckets.where("user_id").equals(userId).toArray()
   if (buckets.length > 0) {
-    const { error } = await supabase.from("buckets").upsert(buckets)
+    const { error } = await client.from("buckets").upsert(buckets)
     if (error) throw error
   }
 
   // Push tasks
   const tasks = await db.tasks.where("user_id").equals(userId).toArray()
   if (tasks.length > 0) {
-    const { error } = await supabase.from("tasks").upsert(tasks)
+    const { error } = await client.from("tasks").upsert(tasks)
     if (error) throw error
   }
 
   // Push sessions
   const sessions = await db.sessions.where("user_id").equals(userId).toArray()
   if (sessions.length > 0) {
-    const { error } = await supabase.from("sessions").upsert(sessions)
+    const { error } = await client.from("sessions").upsert(sessions)
     if (error) throw error
   }
 
   // Push time entries
   const entries = await db.timeEntries.where("user_id").equals(userId).toArray()
   if (entries.length > 0) {
-    const { error } = await supabase.from("time_entries").upsert(entries)
+    const { error } = await client.from("time_entries").upsert(entries)
     if (error) throw error
   }
 }

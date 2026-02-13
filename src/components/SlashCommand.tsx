@@ -238,7 +238,7 @@ SlashCommandList.displayName = "SlashCommandList"
 
 // ─── Suggestion render adapter — bridges Tiptap suggestion with React ───
 
-function createSuggestionRenderer(): SuggestionOptions<SlashMenuItem>["render"] {
+function createSuggestionRenderer() {
   let reactRenderer: ReactRenderer<SlashCommandListRef> | null = null
   let popup: TippyInstance | null = null
 
@@ -311,7 +311,7 @@ export const SlashCommand = Extension.create({
         command: ({ editor, range, props: item }) => {
           item.command({ editor, range })
         },
-        render: createSuggestionRenderer,
+        render: createSuggestionRenderer as SuggestionOptions<SlashMenuItem>["render"],
       }),
     ]
   },

@@ -25,7 +25,7 @@ function hashColor(str: string): string {
  * Renders colored time blocks proportional to duration.
  */
 export function CalendarRail() {
-  const { todaySessions, todayTimeEntries, isRunning, elapsedSeconds, loadTodaySessions } =
+  const { todaySessions, todayTimeEntries, isRunning, loadTodaySessions } =
     useSessionStore()
   const tasks = useTaskStore((s) => s.tasks)
 

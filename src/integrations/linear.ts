@@ -156,7 +156,7 @@ export async function fetchAssignedIssues(
   let hasMore = true
 
   while (hasMore) {
-    const data = await linearQuery<AssignedIssuesResponse>(
+    const data: AssignedIssuesResponse = await linearQuery<AssignedIssuesResponse>(
       apiKey,
       `query AssignedIssues($after: String) {
         viewer {
@@ -208,7 +208,7 @@ async function fetchTeamAssignedIssues(
   let hasMore = true
 
   while (hasMore) {
-    const data = await linearQuery<TeamIssuesResponse>(
+    const data: TeamIssuesResponse = await linearQuery<TeamIssuesResponse>(
       apiKey,
       `query TeamIssues($teamId: String!, $after: String) {
         team(id: $teamId) {

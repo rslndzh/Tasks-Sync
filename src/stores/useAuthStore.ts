@@ -155,7 +155,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!user) return
 
     if (supabase) {
-      await supabase.from("profiles").update({ onboarding_completed: true }).eq("id", user.id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any).from("profiles").update({ onboarding_completed: true }).eq("id", user.id)
     }
 
     set((state) => ({

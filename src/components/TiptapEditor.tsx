@@ -149,7 +149,6 @@ export function TiptapEditor({
       {/* Bubble menu — appears on text selection with formatting options */}
       <BubbleMenu
         editor={editor}
-        tippyOptions={{ duration: 150 }}
         className="flex items-center gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-lg"
       >
         <BubbleButton

@@ -128,17 +128,19 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
 
     if (existingTasks.length > 0) return // Already imported
 
-    const taskCount = await db.tasks
-      .where("[user_id+bucket_id]")
-      .equals([task.user_id, bucketId])
-      .count()
-
     const task = {
       ...taskData,
       bucket_id: bucketId,
       section: section as "today" | "sooner" | "later",
-      position: taskCount,
+      position: 0,
     }
+
+    const taskCount: number = await db.tasks
+      .where("[user_id+bucket_id]")
+      .equals([task.user_id, bucketId])
+      .count()
+
+    task.position = taskCount
 
     await db.tasks.put(task)
 
