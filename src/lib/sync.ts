@@ -34,7 +34,11 @@ function extractErrorMessage(err: unknown): string {
 
 function isMissingObjectStoreError(message: string): boolean {
   const normalized = message.toLowerCase()
-  return normalized.includes("objectstore") && normalized.includes("was not found")
+  const hasObjectStoreText =
+    normalized.includes("objectstore") ||
+    normalized.includes("object store") ||
+    normalized.includes("object stores")
+  return hasObjectStoreText && normalized.includes("not found")
 }
 
 /**
@@ -46,6 +50,17 @@ async function repairLocalCacheFromCloud(): Promise<void> {
   await Dexie.delete("flowpin")
   await pullFromSupabase()
   await reloadStoresFromDexie()
+}
+
+/**
+ * Attempt to recover from a missing IndexedDB object store error.
+ * Returns true when recovery ran successfully.
+ */
+export async function recoverMissingObjectStore(err: unknown): Promise<boolean> {
+  const message = extractErrorMessage(err)
+  if (!isAuthenticated() || !isMissingObjectStoreError(message)) return false
+  await repairLocalCacheFromCloud()
+  return true
 }
 
 // ============================================================================
@@ -420,6 +435,12 @@ export async function pullFromSupabase(): Promise<void> {
     }
   } catch (err) {
     const message = extractErrorMessage(err)
+
+    if (isMissingObjectStoreError(message)) {
+      // Let callers run repair flow from a single place.
+      throw err instanceof Error ? err : new Error(message)
+    }
+
     // Surface schema-missing errors with a friendly message
     if (message.includes("schema cache") || message.includes("does not exist")) {
       useSyncStore.getState().setError("Cloud database isn't set up yet. Run the setup SQL in your Supabase SQL Editor (see scripts/setup-db.sql).")
@@ -715,25 +736,21 @@ export async function syncNow(): Promise<void> {
       store.setSynced()
     }
   } catch (err) {
-    const message = extractErrorMessage(err)
-
-    // Self-heal stale/broken IndexedDB schema from older deployed builds.
-    if (isMissingObjectStoreError(message) && isAuthenticated()) {
-      try {
-        await repairLocalCacheFromCloud()
+    try {
+      const repaired = await recoverMissingObjectStore(err)
+      if (repaired) {
         // Queue is local-only and was wiped during repair; cloud state is now loaded.
         store.setPendingCount(0)
-        if (useSyncStore.getState().status !== "error") {
-          store.setSynced()
-        }
-        return
-      } catch (repairErr) {
-        const repairMessage = extractErrorMessage(repairErr)
-        store.setError(`Sync failed after local cache repair: ${repairMessage}`)
+        store.setSynced()
         return
       }
+    } catch (repairErr) {
+      const repairMessage = extractErrorMessage(repairErr)
+      store.setError(`Sync failed after local cache repair: ${repairMessage}`)
+      return
     }
 
+    const message = extractErrorMessage(err)
     if (message.includes("schema cache") || message.includes("does not exist")) {
       store.setError("Cloud database isn't set up yet. Run the setup SQL in your Supabase SQL Editor (see scripts/setup-db.sql).")
     } else {

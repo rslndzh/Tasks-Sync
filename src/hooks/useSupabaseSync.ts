@@ -10,6 +10,7 @@ import {
   unsubscribeFromRealtime,
   reloadStoresFromDexie,
   pushAllToSupabase,
+  recoverMissingObjectStore,
 } from "@/lib/sync"
 import { getCurrentUserId } from "@/lib/auth"
 
@@ -60,6 +61,25 @@ export function useSupabaseSync() {
         }
         syncStore.setInitialSynced()
       } catch (err) {
+        try {
+          const repaired = await recoverMissingObjectStore(err)
+          if (repaired) {
+            syncStore.setPendingCount(0)
+            syncStore.setSynced()
+            syncStore.setInitialSynced()
+            subscribeToRealtime()
+            return
+          }
+        } catch (repairErr) {
+          const repairMessage = repairErr instanceof Error
+            ? repairErr.message
+            : typeof repairErr === "object" && repairErr !== null && "message" in repairErr
+              ? String((repairErr as { message: unknown }).message)
+              : String(repairErr)
+          syncStore.setError(`Sync failed after local cache repair: ${repairMessage}`)
+          return
+        }
+
         const message = err instanceof Error
           ? err.message
           : typeof err === "object" && err !== null && "message" in err
@@ -86,7 +106,18 @@ export function useSupabaseSync() {
     const interval = setInterval(() => {
       void pullFromSupabase()
         .then(() => reloadStoresFromDexie())
-        .catch(() => {/* silent — next interval will retry */})
+        .catch(async (err) => {
+          // Try one-shot local cache repair on schema mismatch.
+          try {
+            if (await recoverMissingObjectStore(err)) {
+              useSyncStore.getState().setSynced()
+              return
+            }
+          } catch {
+            // silent — next interval/manual sync will retry
+          }
+          // silent — next interval will retry
+        })
     }, 30_000)
 
     return () => clearInterval(interval)
@@ -105,11 +136,23 @@ export function useSupabaseSync() {
       wasOfflineRef.current = false
       const syncStore = useSyncStore.getState()
       syncStore.setSyncing()
-      void flushSyncQueue().then(() => {
-        if (useSyncStore.getState().status !== "error") {
-          syncStore.setSynced()
-        }
-      })
+      void flushSyncQueue()
+        .then(() => {
+          if (useSyncStore.getState().status !== "error") {
+            syncStore.setSynced()
+          }
+        })
+        .catch(async (err) => {
+          try {
+            if (await recoverMissingObjectStore(err)) {
+              syncStore.setPendingCount(0)
+              syncStore.setSynced()
+              return
+            }
+          } catch {
+            // silent — user can still trigger manual sync for detailed error
+          }
+        })
     }
   }, [isOnline, user])
 
