@@ -5,6 +5,7 @@ import { RefreshCw, Download, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useTaskStore } from "@/stores/useTaskStore"
+import { useImportRuleStore } from "@/stores/useImportRuleStore"
 import { cn } from "@/lib/utils"
 import type { InboxItem } from "@/types/inbox"
 
@@ -18,6 +19,30 @@ interface ItemGroup {
   key: string
   label: string
   items: InboxItem[]
+}
+
+function resolveMappedImportTarget(
+  item: InboxItem,
+  rules: ReturnType<typeof useImportRuleStore.getState>["rules"],
+  fallbackBucketId: string,
+): { bucketId: string; section: "today" | "sooner" | "later" } {
+  const meta = item.metadata as Record<string, unknown>
+  const matched = rules.find((rule) => {
+    if (!rule.is_active || rule.integration_type !== item.sourceType) return false
+    if (item.sourceType === "linear") return rule.source_filter.teamId === meta.teamId
+    if (item.sourceType === "todoist") return rule.source_filter.projectId === meta.projectId
+    if (item.sourceType === "attio") return rule.source_filter.listId === "all" || rule.source_filter.listId === meta.listId
+    return false
+  })
+
+  if (!matched) {
+    return { bucketId: fallbackBucketId, section: "sooner" }
+  }
+
+  return {
+    bucketId: matched.target_bucket_id ?? fallbackBucketId,
+    section: matched.target_section as "today" | "sooner" | "later",
+  }
 }
 
 /** Group inbox items by project/team based on provider type */
@@ -127,6 +152,7 @@ export function IntegrationInboxPanel({ connectionId }: IntegrationInboxPanelPro
   const getSyncState = useConnectionStore((s) => s.getSyncState)
   const loadTasks = useTaskStore((s) => s.loadTasks)
   const buckets = useBucketStore((s) => s.buckets)
+  const importRules = useImportRuleStore((s) => s.rules)
 
   const conn = connections.find((c) => c.id === connectionId)
   if (!conn) return null
@@ -145,7 +171,8 @@ export function IntegrationInboxPanel({ connectionId }: IntegrationInboxPanelPro
   const handleImportAll = async () => {
     if (!defaultBucket) return
     for (const item of items) {
-      await importItem(connectionId, item, defaultBucket.id, "sooner")
+      const target = resolveMappedImportTarget(item, importRules, defaultBucket.id)
+      await importItem(connectionId, item, target.bucketId, target.section)
     }
     void loadTasks()
   }
@@ -185,7 +212,7 @@ export function IntegrationInboxPanel({ connectionId }: IntegrationInboxPanelPro
               className="size-6"
               onClick={() => void handleImportAll()}
               aria-label="Import all"
-              title="Import all to default bucket"
+              title="Import all using mapping rules (fallback: Inbox)"
             >
               <Download className="size-3" />
             </Button>

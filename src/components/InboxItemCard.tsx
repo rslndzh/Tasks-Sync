@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import type { InboxItem } from "@/types/inbox"
 import type { ImportRule } from "@/types/import-rule"
 import { useBucketStore } from "@/stores/useBucketStore"
@@ -159,6 +159,12 @@ export function InboxItemCard({ item, connectionId, onImport }: InboxItemCardPro
   const [selectedBucket, setSelectedBucket] = useState(ruleDefaults.bucketId)
   const [selectedSection, setSelectedSection] = useState<"today" | "sooner" | "later">(ruleDefaults.section)
   const [expanded, setExpanded] = useState(false)
+
+  // Keep quick-import defaults aligned with latest mapping rules as they load/update.
+  useEffect(() => {
+    setSelectedBucket(ruleDefaults.bucketId)
+    setSelectedSection(ruleDefaults.section)
+  }, [ruleDefaults.bucketId, ruleDefaults.section])
 
   const dragData: DragData = { type: "inbox-item", item, connectionId }
 
