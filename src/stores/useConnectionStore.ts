@@ -60,6 +60,13 @@ interface ConnectionState {
 }
 
 const DEFAULT_SYNC: ConnectionSyncState = { isSyncing: false, lastSyncedAt: null, error: null }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function toValidUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return UUID_RE.test(trimmed) ? trimmed : null
+}
 
 /** Convert a local IntegrationConnection to a Supabase-compatible row for queueSync */
 function toRemotePayload(conn: IntegrationConnection): Record<string, unknown> {
@@ -175,6 +182,17 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
     })
 
     try {
+      const defaultBucketId = toValidUuid(conn.defaultBucketId)
+      if (conn.defaultBucketId && !defaultBucketId) {
+        await db.connections.update(conn.id, { defaultBucketId: null })
+        void queueSync("integrations", "update", { id: conn.id, default_bucket_id: null })
+        set((s) => ({
+          connections: s.connections.map((c) => (
+            c.id === conn.id ? { ...c, defaultBucketId: null } : c
+          )),
+        }))
+      }
+
       let items: InboxItem[] = []
 
       if (conn.type === "linear") {
@@ -215,7 +233,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
 
       // Auto-import: if this connection has default mapping enabled, import matching items
       const autoImportedIds = new Set<string>()
-      if (conn.autoImport && conn.defaultBucketId) {
+      if (conn.autoImport && defaultBucketId) {
         const section = conn.defaultSection ?? "sooner"
         // Load import rules once, outside the loop
         const importRules = await db.importRules.where("integration_type").equals(conn.type).toArray()
@@ -224,8 +242,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         for (const item of newItems) {
           // Use the specific rule's bucket/section if one matches, otherwise default mapping
           const matchedRule = activeRules.find((r) => matchItemToRule(item, r))
-          const targetBucketId = matchedRule ? matchedRule.target_bucket_id : conn.defaultBucketId
+          const targetBucketId = toValidUuid(matchedRule?.target_bucket_id) ?? defaultBucketId
           const targetSection = matchedRule ? matchedRule.target_section : section
+          if (!targetBucketId) continue
 
           const userId = getCurrentUserId()
           const position = await db.tasks

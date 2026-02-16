@@ -478,7 +478,7 @@ interface SourceMappingRowProps {
     targetSection: SectionType,
     integrationType: IntegrationType,
   ) => Promise<unknown>
-  onUpdateRule: (id: string, updates: { target_bucket_id?: string; target_section?: SectionType; is_active?: boolean }) => Promise<void>
+  onUpdateRule: (id: string, updates: { target_bucket_id?: string | null; target_section?: SectionType; is_active?: boolean }) => Promise<void>
   onDeleteRule: (id: string) => Promise<void>
 }
 

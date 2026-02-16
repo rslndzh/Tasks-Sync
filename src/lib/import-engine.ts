@@ -45,6 +45,12 @@ export async function applyImportRules(
       continue
     }
 
+    if (!matchingRule.target_bucket_id) {
+      // Corrupted or cleared rule target — skip import until user picks a bucket
+      skipped++
+      continue
+    }
+
     // Count tasks in target bucket for position
     const position = await db.tasks
       .where("[user_id+bucket_id]")

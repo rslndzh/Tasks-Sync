@@ -20,7 +20,7 @@ export interface ImportRule {
   user_id: string
   integration_type: IntegrationType
   source_filter: ImportRuleSourceFilter
-  target_bucket_id: string
+  target_bucket_id: string | null
   target_section: SectionType
   is_active: boolean
   created_at: string

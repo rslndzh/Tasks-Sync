@@ -186,7 +186,7 @@ export function DndProvider({ children }: DndProviderProps) {
             default: return false
           }
         })
-        if (matched) return matched.target_bucket_id
+        if (matched?.target_bucket_id) return matched.target_bucket_id
         if (conn?.defaultBucketId) return conn.defaultBucketId
         if (fallbackBucketId) return fallbackBucketId
         // Last resort: default Inbox bucket

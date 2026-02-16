@@ -145,6 +145,68 @@ class FlowpinDB extends Dexie {
         if (conn.defaultSection === "") conn.defaultSection = null
       })
     })
+
+    // v8: Repair legacy sentinel values (e.g. "global") in UUID-backed fields
+    this.version(8).stores({
+      buckets: "id, user_id, position, is_default",
+      tasks:
+        "id, user_id, bucket_id, section, source, source_id, status, connection_id, [user_id+bucket_id], [user_id+section], [user_id+source]",
+      sessions: "id, user_id, is_active, [user_id+is_active]",
+      timeEntries: "id, session_id, user_id, task_id, started_at",
+      importRules: "id, user_id, integration_type, is_active",
+      integrationKeys: "integrationId, type",
+      connections: "id, type, isActive",
+      syncQueue: "id, table, createdAt",
+      appState: "key",
+    }).upgrade(async (tx) => {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      const NULL_SENTINELS = new Set(["", "global", "__none__", "none", "null"])
+      const UUID_KEYS = ["bucket_id", "connection_id", "integration_id", "default_bucket_id", "target_bucket_id"]
+
+      const normalizeNullableUuid = (value: unknown): string | null => {
+        if (value == null) return null
+        if (typeof value !== "string") return null
+        const trimmed = value.trim()
+        if (NULL_SENTINELS.has(trimmed.toLowerCase())) return null
+        return UUID_RE.test(trimmed) ? trimmed : null
+      }
+
+      await tx.table("connections").toCollection().modify((conn: Record<string, unknown>) => {
+        const nextDefaultBucketId = normalizeNullableUuid(conn.defaultBucketId)
+        if (conn.defaultBucketId !== nextDefaultBucketId) conn.defaultBucketId = nextDefaultBucketId
+        if (conn.defaultSection === "") conn.defaultSection = null
+      })
+
+      await tx.table("importRules").toCollection().modify((rule: Record<string, unknown>) => {
+        const nextTargetBucketId = normalizeNullableUuid(rule.target_bucket_id)
+        if (rule.target_bucket_id !== nextTargetBucketId) rule.target_bucket_id = nextTargetBucketId
+      })
+
+      await tx.table("tasks").toCollection().modify((task: Record<string, unknown>) => {
+        const nextBucketId = normalizeNullableUuid(task.bucket_id)
+        const nextConnectionId = normalizeNullableUuid(task.connection_id)
+        if (task.bucket_id !== nextBucketId) task.bucket_id = nextBucketId
+        if (task.connection_id !== nextConnectionId) task.connection_id = nextConnectionId
+      })
+
+      await tx.table("syncQueue").toCollection().modify((item: Record<string, unknown>) => {
+        const payload = item.payload as Record<string, unknown> | undefined
+        if (!payload || typeof payload !== "object") return
+
+        const cleaned = { ...payload }
+        let changed = false
+        for (const key of UUID_KEYS) {
+          if (!(key in cleaned)) continue
+          const next = normalizeNullableUuid(cleaned[key])
+          if (cleaned[key] !== next) {
+            cleaned[key] = next
+            changed = true
+          }
+        }
+
+        if (changed) item.payload = cleaned
+      })
+    })
   }
 }
 

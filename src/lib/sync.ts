@@ -187,21 +187,34 @@ async function resetDeadLetters(): Promise<number> {
 }
 
 /**
- * Sanitize a payload before sending to Supabase.
- * Converts empty strings to null for UUID columns — Postgres rejects ""
- * as invalid UUID syntax but accepts null for nullable UUID fields.
+ * Sanitize payload UUIDs before sending to Supabase.
+ * Legacy local data may contain sentinel strings (e.g. "global") for nullable
+ * UUID columns. Postgres rejects those with "invalid input syntax for type uuid".
  */
-const UUID_FIELDS = new Set([
-  "id", "user_id", "bucket_id", "connection_id", "task_id", "session_id",
-  "integration_id", "default_bucket_id", "target_bucket_id",
+const NULLABLE_UUID_FIELDS = new Set([
+  "bucket_id",
+  "connection_id",
+  "integration_id",
+  "default_bucket_id",
+  "target_bucket_id",
 ])
+
+const LEGACY_NULL_SENTINELS = new Set(["", "global", "__none__", "none", "null"])
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function sanitizeNullableUuid(value: unknown): string | null | unknown {
+  if (value == null) return null
+  if (typeof value !== "string") return value
+  const trimmed = value.trim()
+  if (LEGACY_NULL_SENTINELS.has(trimmed.toLowerCase())) return null
+  return UUID_RE.test(trimmed) ? trimmed : null
+}
 
 function sanitizePayload(payload: Record<string, unknown>): Record<string, unknown> {
   const cleaned = { ...payload }
   for (const key of Object.keys(cleaned)) {
-    if (UUID_FIELDS.has(key) && cleaned[key] === "") {
-      cleaned[key] = null
-    }
+    if (!NULLABLE_UUID_FIELDS.has(key)) continue
+    cleaned[key] = sanitizeNullableUuid(cleaned[key])
   }
   return cleaned
 }
@@ -254,7 +267,7 @@ function remoteToConnection(row: Record<string, unknown>): IntegrationConnection
     metadata: (row.metadata as Record<string, unknown>) ?? {},
     isActive: (row.is_active as boolean) ?? true,
     created_at: (row.created_at as string) ?? new Date().toISOString(),
-    defaultBucketId: (row.default_bucket_id as string) ?? null,
+    defaultBucketId: (row.default_bucket_id as string | null) ?? null,
     defaultSection: (row.default_section as SectionType) ?? null,
     autoImport: (row.auto_import as boolean) ?? false,
   }
@@ -284,7 +297,7 @@ function remoteToImportRule(row: Record<string, unknown>): ImportRule {
     user_id: row.user_id as string,
     integration_type: (row.integration_type as IntegrationType) ?? "linear",
     source_filter: (row.source_filter as ImportRule["source_filter"]) ?? {},
-    target_bucket_id: (row.target_bucket_id as string) ?? "",
+    target_bucket_id: (row.target_bucket_id as string | null) ?? null,
     target_section: (row.target_section as SectionType) ?? "sooner",
     is_active: (row.is_active as boolean) ?? true,
     created_at: (row.created_at as string) ?? new Date().toISOString(),
@@ -637,14 +650,14 @@ export async function pushConnectionsToSupabase(userId: string): Promise<void> {
 
   const connections = await db.connections.toArray()
   if (connections.length > 0) {
-    const remoteConns = connections.map((c) => connectionToRemote(c, userId))
+    const remoteConns = connections.map((c) => sanitizePayload(connectionToRemote(c, userId)))
     const { error } = await client.from("integrations").upsert(remoteConns)
     if (error) throw error
   }
 
   const rules = await db.importRules.toArray()
   if (rules.length > 0) {
-    const remoteRules = rules.map((r) => importRuleToRemote(r, userId))
+    const remoteRules = rules.map((r) => sanitizePayload(importRuleToRemote(r, userId)))
     const { error } = await client.from("import_rules").upsert(remoteRules)
     if (error) throw error
   }

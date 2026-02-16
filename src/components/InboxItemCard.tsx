@@ -148,7 +148,10 @@ export function InboxItemCard({ item, connectionId, onImport }: InboxItemCardPro
         (item.sourceType === "todoist" && filter.projectId === meta.projectId) ||
         (item.sourceType === "attio" && (filter.listId === "all" || filter.listId === meta.listId))
       ) {
-        return { bucketId: rule.target_bucket_id, section: rule.target_section as "today" | "sooner" | "later" }
+        return {
+          bucketId: rule.target_bucket_id ?? (defaultBucket?.id ?? ""),
+          section: rule.target_section as "today" | "sooner" | "later",
+        }
       }
     }
     return { bucketId: defaultBucket?.id ?? "", section: "sooner" as const }
