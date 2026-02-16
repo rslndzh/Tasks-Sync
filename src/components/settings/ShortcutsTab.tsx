@@ -6,20 +6,36 @@ import { SHORTCUTS } from "@/lib/shortcuts"
 export function ShortcutsTab() {
   const groups = [
     {
-      title: "Navigation",
-      items: [SHORTCUTS.arrowUp, SHORTCUTS.arrowDown],
+      title: "Task Actions",
+      items: [
+        SHORTCUTS.openTask,
+        SHORTCUTS.startFocus,
+        SHORTCUTS.moveToToday,
+        SHORTCUTS.moveToSooner,
+        SHORTCUTS.moveToLater,
+        SHORTCUTS.removeFromToday,
+        SHORTCUTS.moveToBucket,
+        SHORTCUTS.completeTask,
+        SHORTCUTS.archiveTask,
+        SHORTCUTS.openInSource,
+        SHORTCUTS.copyTitle,
+        SHORTCUTS.copyTaskLink,
+      ],
     },
     {
-      title: "Triage",
-      items: [SHORTCUTS.moveToToday, SHORTCUTS.moveToSooner, SHORTCUTS.moveToLater],
+      title: "Selection",
+      items: [
+        SHORTCUTS.arrowUp,
+        SHORTCUTS.arrowDown,
+        SHORTCUTS.rangeUp,
+        SHORTCUTS.rangeDown,
+        SHORTCUTS.selectAll,
+        SHORTCUTS.clearSelection,
+      ],
     },
     {
-      title: "Actions",
-      items: [SHORTCUTS.newTask, SHORTCUTS.editTask, SHORTCUTS.completeTask],
-    },
-    {
-      title: "UI",
-      items: [SHORTCUTS.showHelp],
+      title: "Global",
+      items: [SHORTCUTS.openSettings, SHORTCUTS.showHelp],
     },
   ]
 
@@ -38,7 +54,7 @@ export function ShortcutsTab() {
             {group.title}
           </h4>
           <div className="space-y-1">
-            {group.items.map((shortcut) => (
+            {group.items.filter((shortcut) => shortcut.enabled !== false).map((shortcut) => (
               <div
                 key={shortcut.key}
                 className="flex items-center justify-between rounded px-2 py-1.5 text-sm"

@@ -3,6 +3,7 @@ import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { cn } from "@/lib/utils"
 import { TaskCard } from "@/components/TaskCard"
+import { TaskContextMenu } from "@/components/TaskContextMenu"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useTrackedTimeMap } from "@/hooks/useTrackedTime"
 import type { LocalTask } from "@/types/local"
@@ -23,7 +24,7 @@ interface SortableTaskCardProps {
  * to open task detail, and carries DragData for the global DndProvider.
  */
 export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: SortableTaskCardProps) {
-  const { selectedTaskId, selectedTaskIds, toggleSelectTask, selectRange, setHoveredTask } = useTaskStore()
+  const { selectedTaskId, selectedTaskIds, toggleSelectTask, selectRange, setSelectedTask, setHoveredTask } = useTaskStore()
   const navigate = useNavigate()
   const location = useLocation()
   const trackedMap = useTrackedTimeMap()
@@ -64,28 +65,37 @@ export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: S
   }
 
   return (
-    <div
-      ref={setNodeRef}
-      data-task-id={task.id}
-      style={style}
-      onClick={handleSelect}
-      onDoubleClick={handleDoubleClick}
-      onMouseEnter={() => setHoveredTask(task.id)}
-      onMouseLeave={() => setHoveredTask(null)}
-      className={cn(
-        isDragging && "z-10 opacity-40",
-      )}
-      {...attributes}
-      {...listeners}
-    >
-      <TaskCard
-        task={task}
-        showBucket={showBucket}
-        bucketName={bucketName}
-        trackedSeconds={trackedMap.get(task.id) ?? 0}
-        isSelected={isFocused}
-        isMultiSelected={isMultiSelected}
-      />
-    </div>
+    <TaskContextMenu task={task}>
+      <div
+        ref={setNodeRef}
+        data-task-id={task.id}
+        style={style}
+        onClick={handleSelect}
+        onContextMenu={() => {
+          if (!selectedTaskIds.has(task.id)) {
+            toggleSelectTask(task.id, false)
+            return
+          }
+          setSelectedTask(task.id)
+        }}
+        onDoubleClick={handleDoubleClick}
+        onMouseEnter={() => setHoveredTask(task.id)}
+        onMouseLeave={() => setHoveredTask(null)}
+        className={cn(
+          isDragging && "z-10 opacity-40",
+        )}
+        {...attributes}
+        {...listeners}
+      >
+        <TaskCard
+          task={task}
+          showBucket={showBucket}
+          bucketName={bucketName}
+          trackedSeconds={trackedMap.get(task.id) ?? 0}
+          isSelected={isFocused}
+          isMultiSelected={isMultiSelected}
+        />
+      </div>
+    </TaskContextMenu>
   )
 }

@@ -147,13 +147,17 @@ export function OnboardingPage() {
             <div className="space-y-2">
               <div className="rounded-lg bg-muted/50 p-4">
                 <div className="space-y-2 text-sm">
-                  <ShortcutRow keys={["N"]} description="New task" />
                   <ShortcutRow keys={["1", "2", "3"]} description="Move to Today / Sooner / Later" />
-                  <ShortcutRow keys={["S"]} description="Start focus session" />
-                  <ShortcutRow keys={["Esc"]} description="Stop session" />
+                  <ShortcutRow keys={["F"]} description="Start or switch focus" />
+                  <ShortcutRow keys={["D"]} description="Mark task done" />
+                  <ShortcutRow keys={["A"]} description="Archive task" />
+                  <ShortcutRow keys={["R"]} description="Remove from Today" />
                   <Separator className="my-2" />
                   <ShortcutRow keys={["↑", "↓"]} description="Navigate tasks" />
-                  <ShortcutRow keys={["Enter"]} description="Complete task" />
+                  <ShortcutRow keys={["Shift+↑", "Shift+↓"]} description="Extend selection" />
+                  <ShortcutRow keys={["Cmd/Ctrl+A"]} description="Select all visible tasks" />
+                  <ShortcutRow keys={["Enter"]} description="Open task details" />
+                  <ShortcutRow keys={["Esc"]} description="Clear selection" />
                   <ShortcutRow keys={["?"]} description="Show all shortcuts" />
                 </div>
               </div>

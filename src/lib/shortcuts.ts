@@ -9,28 +9,46 @@ export interface Shortcut {
   key: string
   label: string
   description: string
+  scope: "task" | "selection" | "global" | "ui"
+  /** Whether the shortcut is currently available in product UI */
+  enabled?: boolean
   /** Whether to prevent default browser behavior */
   preventDefault?: boolean
 }
 
 export const SHORTCUTS: Record<string, Shortcut> = {
-  // Section moves
-  moveToToday: { key: "1", label: "1", description: "Move task to Today" },
-  moveToSooner: { key: "2", label: "2", description: "Move task to Sooner" },
-  moveToLater: { key: "3", label: "3", description: "Move task to Later" },
+  // Task actions
+  openTask: { key: "Enter", label: "Enter", description: "Open selected task", scope: "task" },
+  startFocus: { key: "f", label: "F", description: "Start/switch focus to selected task", scope: "task" },
+  moveToToday: { key: "1", label: "1", description: "Move task to Today", scope: "task" },
+  moveToSooner: { key: "2", label: "2", description: "Move task to Sooner", scope: "task" },
+  moveToLater: { key: "3", label: "3", description: "Move task to Later", scope: "task" },
+  removeFromToday: { key: "r", label: "R", description: "Remove selected task(s) from Today", scope: "task" },
+  moveToBucket: { key: "b", label: "B", description: "Open move-to-bucket menu", scope: "task" },
+  completeTask: { key: "d", label: "D", description: "Mark selected task(s) done", scope: "task" },
+  archiveTask: { key: "a", label: "A", description: "Archive selected task(s)", scope: "task" },
+  openInSource: { key: "o", label: "O", description: "Open selected integration task in source app", scope: "task" },
+  copyTitle: { key: "t", label: "T", description: "Copy selected task title", scope: "task" },
+  copyTaskLink: { key: "y", label: "Y", description: "Copy selected task link", scope: "task" },
 
-  // Navigation
-  arrowUp: { key: "ArrowUp", label: "↑", description: "Select previous task" },
-  arrowDown: { key: "ArrowDown", label: "↓", description: "Select next task" },
+  // Selection/navigation
+  arrowUp: { key: "ArrowUp", label: "↑", description: "Select previous visible task", scope: "selection" },
+  arrowDown: { key: "ArrowDown", label: "↓", description: "Select next visible task", scope: "selection" },
+  rangeUp: { key: "Shift+ArrowUp", label: "Shift+↑", description: "Extend selection up", scope: "selection" },
+  rangeDown: { key: "Shift+ArrowDown", label: "Shift+↓", description: "Extend selection down", scope: "selection" },
+  selectAll: { key: "Mod+a", label: "Cmd/Ctrl+A", description: "Select all visible tasks", scope: "selection" },
+  clearSelection: { key: "Escape", label: "Esc", description: "Close menu/dialog or clear selection", scope: "selection" },
 
-  // Actions
-  newTask: { key: "n", label: "N", description: "Create new task", preventDefault: true },
-  editTask: { key: "e", label: "E", description: "Edit selected task" },
-  completeTask: { key: "d", label: "D", description: "Complete selected task" },
-  completeTaskEnter: { key: "Enter", label: "Enter", description: "Complete selected task" },
-
-  // UI
-  showHelp: { key: "?", label: "?", description: "Show keyboard shortcuts" },
+  // Global/UI
+  openSettings: { key: "Mod+,", label: "Cmd/Ctrl+,", description: "Open Settings", scope: "global" },
+  reservedQuickAdd: {
+    key: "n",
+    label: "N",
+    description: "Reserved for quick-add (disabled for now)",
+    scope: "global",
+    enabled: false,
+  },
+  showHelp: { key: "?", label: "?", description: "Show keyboard shortcuts", scope: "ui" },
 }
 
 /**
