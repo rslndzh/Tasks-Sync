@@ -6,7 +6,7 @@ import type { IntegrationConnection } from "@/types/local"
 import type { IntegrationType } from "@/types/database"
 import type { InboxItem } from "@/types/inbox"
 import { mapInboxItemToLocalTask } from "@/types/inbox"
-import { validateApiKey as validateLinearKey, fetchTeams, fetchAssignedIssues, fetchWorkflowStates, DEFAULT_LINEAR_STATE_FILTER } from "@/integrations/linear"
+import { validateApiKey as validateLinearKey, fetchTeams, fetchAssignedIssues, fetchWorkflowStates, DEFAULT_LINEAR_STATE_FILTER, LINEAR_STATE_TYPES } from "@/integrations/linear"
 import type { LinearStateType } from "@/integrations/linear"
 import { mapLinearIssueToInboxItem } from "@/integrations/linear-mapper"
 import { validateApiToken as validateTodoistToken, fetchActiveTasks as fetchTodoistTasks, fetchProjects as fetchTodoistProjects, mapTodoistTaskToInboxItem } from "@/integrations/todoist"
@@ -72,6 +72,12 @@ function canInferCompletionByAbsence(type: IntegrationType): boolean {
   // Linear fetch is filter-driven (state/team settings), so absence does not
   // reliably mean "completed". Todoist/Attio fetch active tasks only.
   return type === "todoist" || type === "attio"
+}
+
+interface SyncFetchResult {
+  items: InboxItem[]
+  /** Source IDs known to be active in the provider (used for safe reopen) */
+  activeSourceIds: Set<string>
 }
 
 /** Convert a local IntegrationConnection to a Supabase-compatible row for queueSync */
@@ -199,15 +205,16 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         }))
       }
 
-      let items: InboxItem[] = []
+      let result: SyncFetchResult = { items: [], activeSourceIds: new Set<string>() }
 
       if (conn.type === "linear") {
-        items = await syncLinearConnection(conn)
+        result = await syncLinearConnection(conn)
       } else if (conn.type === "todoist") {
-        items = await syncTodoistConnection(conn)
+        result = await syncTodoistConnection(conn)
       } else if (conn.type === "attio") {
-        items = await syncAttioConnection(conn)
+        result = await syncAttioConnection(conn)
       }
+      const items = result.items
 
       const existingConnectionTasks = await db.tasks
         .where("source")
@@ -221,8 +228,9 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
       // Inbound reopen detection: if a previously completed task appears in
       // active fetch again, restore it locally without writeback.
       const fetchedSourceIds = new Set(items.map((i) => i.sourceId))
+      const activeSourceIds = result.activeSourceIds.size > 0 ? result.activeSourceIds : fetchedSourceIds
       const reopenedLocally = existingConnectionTasks.filter(
-        (t) => t.status === "completed" && t.source_id && fetchedSourceIds.has(t.source_id),
+        (t) => t.status === "completed" && t.source_id && activeSourceIds.has(t.source_id),
       )
       if (reopenedLocally.length > 0) {
         const taskStore = useTaskStore.getState()
@@ -411,14 +419,20 @@ function matchItemToRule(item: InboxItem, rule: ImportRule): boolean {
 // Provider-specific sync functions
 // ============================================================================
 
-async function syncLinearConnection(conn: IntegrationConnection): Promise<InboxItem[]> {
+async function syncLinearConnection(conn: IntegrationConnection): Promise<SyncFetchResult> {
   // Validate key + refresh metadata (teams, user)
   const user = await validateLinearKey(conn.apiKey)
   const teams = await fetchTeams(conn.apiKey)
 
   // Use connection-configured state filter, or default to started+unstarted
   const stateFilter = (conn.metadata.linearStateTypes as LinearStateType[] | undefined) ?? [...DEFAULT_LINEAR_STATE_FILTER]
-  const issues = await fetchAssignedIssues(conn.apiKey, undefined, stateFilter)
+  // Always fetch all active state-types so we can safely reopen tasks that are
+  // still active in Linear but hidden by a narrower inbox filter.
+  const allActiveIssues = await fetchAssignedIssues(conn.apiKey, undefined, [...LINEAR_STATE_TYPES])
+  const issues = allActiveIssues.filter((issue) => {
+    const stateType = issue.state?.type as LinearStateType | undefined
+    return stateType ? stateFilter.includes(stateType) : false
+  })
 
   // Cache workflow state IDs per team for two-way sync writeback
   const teamDoneStates: Record<string, string> = {}
@@ -436,10 +450,13 @@ async function syncLinearConnection(conn: IntegrationConnection): Promise<InboxI
   await db.connections.update(conn.id, { metadata: updatedMetadata })
   void queueSync("integrations", "update", { id: conn.id, metadata: updatedMetadata })
 
-  return issues.map((issue) => mapLinearIssueToInboxItem(issue, conn.id))
+  return {
+    items: issues.map((issue) => mapLinearIssueToInboxItem(issue, conn.id)),
+    activeSourceIds: new Set(allActiveIssues.map((issue) => issue.id)),
+  }
 }
 
-async function syncTodoistConnection(conn: IntegrationConnection): Promise<InboxItem[]> {
+async function syncTodoistConnection(conn: IntegrationConnection): Promise<SyncFetchResult> {
   await validateTodoistToken(conn.apiKey)
   const projects = await fetchTodoistProjects(conn.apiKey)
   const tasks = await fetchTodoistTasks(conn.apiKey)
@@ -452,12 +469,15 @@ async function syncTodoistConnection(conn: IntegrationConnection): Promise<Inbox
   await db.connections.update(conn.id, { metadata: updatedMetadata })
   void queueSync("integrations", "update", { id: conn.id, metadata: updatedMetadata })
 
-  return tasks.map((task) =>
-    mapTodoistTaskToInboxItem(task, conn.id, projectMap.get(task.project_id)),
-  )
+  return {
+    items: tasks.map((task) =>
+      mapTodoistTaskToInboxItem(task, conn.id, projectMap.get(task.project_id)),
+    ),
+    activeSourceIds: new Set(tasks.map((task) => String(task.id))),
+  }
 }
 
-async function syncAttioConnection(conn: IntegrationConnection): Promise<InboxItem[]> {
+async function syncAttioConnection(conn: IntegrationConnection): Promise<SyncFetchResult> {
   await validateAttioKey(conn.apiKey)
   const tasks = await fetchAttioTasks(conn.apiKey)
 
@@ -466,5 +486,8 @@ async function syncAttioConnection(conn: IntegrationConnection): Promise<InboxIt
   await db.connections.update(conn.id, { metadata: updatedMetadata })
   void queueSync("integrations", "update", { id: conn.id, metadata: updatedMetadata })
 
-  return tasks.map((task) => mapAttioTaskToInboxItem(task, conn.id))
+  return {
+    items: tasks.map((task) => mapAttioTaskToInboxItem(task, conn.id)),
+    activeSourceIds: new Set(tasks.map((task) => String(task.id))),
+  }
 }
