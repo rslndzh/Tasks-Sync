@@ -48,6 +48,7 @@ function isMissingObjectStoreError(message: string): boolean {
 async function repairLocalCacheFromCloud(): Promise<void> {
   db.close()
   await Dexie.delete("flowpin")
+  await db.open()
   await pullFromSupabase()
   await reloadStoresFromDexie()
 }
