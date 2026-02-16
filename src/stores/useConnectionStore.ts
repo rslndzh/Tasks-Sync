@@ -68,6 +68,12 @@ function toValidUuid(value: unknown): string | null {
   return UUID_RE.test(trimmed) ? trimmed : null
 }
 
+function canInferCompletionByAbsence(type: IntegrationType): boolean {
+  // Linear fetch is filter-driven (state/team settings), so absence does not
+  // reliably mean "completed". Todoist/Attio fetch active tasks only.
+  return type === "todoist" || type === "attio"
+}
+
 /** Convert a local IntegrationConnection to a Supabase-compatible row for queueSync */
 function toRemotePayload(conn: IntegrationConnection): Record<string, unknown> {
   const userId = getCurrentUserId()
@@ -203,32 +209,47 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         items = await syncAttioConnection(conn)
       }
 
-      // Inbound completion detection: find imported tasks that disappeared from the active fetch
-      const fetchedSourceIds = new Set(items.map((i) => i.sourceId))
-      const importedActiveTasks = await db.tasks
+      const existingConnectionTasks = await db.tasks
         .where("source")
         .equals(conn.type)
-        .filter((t) => t.status === "active" && t.source_id != null)
+        .filter((t) =>
+          t.source_id != null &&
+          (t.connection_id === conn.id || t.connection_id == null),
+        )
         .toArray()
 
-      const completedExternally = importedActiveTasks.filter(
-        (t) => t.source_id && !fetchedSourceIds.has(t.source_id),
+      // Inbound reopen detection: if a previously completed task appears in
+      // active fetch again, restore it locally without writeback.
+      const fetchedSourceIds = new Set(items.map((i) => i.sourceId))
+      const reopenedLocally = existingConnectionTasks.filter(
+        (t) => t.status === "completed" && t.source_id && fetchedSourceIds.has(t.source_id),
       )
-
-      if (completedExternally.length > 0) {
+      if (reopenedLocally.length > 0) {
         const taskStore = useTaskStore.getState()
-        for (const task of completedExternally) {
-          // skipWriteback: task is already done in the source — don't push back
-          await taskStore.completeTask(task.id, { skipWriteback: true })
+        for (const task of reopenedLocally) {
+          await taskStore.uncompleteTask(task.id, { skipWriteback: true })
+        }
+      }
+
+      // Inbound completion detection: only for providers where "not fetched"
+      // truly means "no longer active" (Todoist/Attio).
+      if (canInferCompletionByAbsence(conn.type)) {
+        const importedActiveTasks = existingConnectionTasks.filter((t) => t.status === "active")
+        const completedExternally = importedActiveTasks.filter(
+          (t) => t.source_id && !fetchedSourceIds.has(t.source_id),
+        )
+
+        if (completedExternally.length > 0) {
+          const taskStore = useTaskStore.getState()
+          for (const task of completedExternally) {
+            // skipWriteback: task is already done in the source — don't push back
+            await taskStore.completeTask(task.id, { skipWriteback: true })
+          }
         }
       }
 
       // Filter out already-imported items (dedup by source + source_id)
-      const existingSourceIds = new Set(
-        (await db.tasks.where("source").equals(conn.type).toArray()).map(
-          (t) => t.source_id,
-        ),
-      )
+      const existingSourceIds = new Set(existingConnectionTasks.map((t) => t.source_id))
       const newItems = items.filter((i) => !existingSourceIds.has(i.sourceId))
 
       // Auto-import: if this connection has default mapping enabled, import matching items
