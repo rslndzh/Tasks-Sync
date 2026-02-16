@@ -1,4 +1,5 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
+import { useTheme } from "next-themes"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -10,16 +11,24 @@ import {
 import { useTodaySectionsStore } from "@/stores/useTodaySectionsStore"
 
 /**
- * General settings tab — display name, default import section, theme toggle (future).
+ * General settings tab — display prefs, default section, and theme selection.
  */
 export function GeneralTab() {
   const enabled = useTodaySectionsStore((s) => s.enabled)
   const load = useTodaySectionsStore((s) => s.load)
   const setEnabled = useTodaySectionsStore((s) => s.setEnabled)
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const selectedTheme = mounted ? (theme ?? "system") : "system"
 
   return (
     <div className="space-y-6">
@@ -70,12 +79,25 @@ export function GeneralTab() {
         </label>
       </div>
 
-      {/* Theme toggle — future */}
+      {/* Theme */}
       <div className="space-y-2">
-        <Label>Theme</Label>
+        <Label htmlFor="theme">Theme</Label>
         <p className="text-xs text-muted-foreground">
-          Coming soon — we&apos;re picking colors.
+          Choose how Flowpin looks on this device.
         </p>
+        <Select
+          value={selectedTheme}
+          onValueChange={(value) => setTheme(value)}
+        >
+          <SelectTrigger id="theme" className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="system">System</SelectItem>
+            <SelectItem value="light">Light</SelectItem>
+            <SelectItem value="dark">Dark</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )
