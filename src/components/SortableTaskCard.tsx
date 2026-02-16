@@ -20,8 +20,8 @@ interface SortableTaskCardProps {
 
 /**
  * Wraps TaskCard with dnd-kit sortable behavior.
- * Handles drag transforms, multi-select click logic, double-click
- * to open task detail, and carries DragData for the global DndProvider.
+ * Handles drag transforms, click-to-open behavior, selection modifiers,
+ * and carries DragData for the global DndProvider.
  */
 export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: SortableTaskCardProps) {
   const { selectedTaskId, selectedTaskIds, toggleSelectTask, selectRange, setSelectedTask, setHoveredTask } = useTaskStore()
@@ -51,16 +51,25 @@ export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: S
   const isMultiSelected = selectedTaskIds.size > 1 && selectedTaskIds.has(task.id)
   const isFocused = selectedTaskId === task.id
 
-  function handleSelect(e: React.MouseEvent) {
-    if (e.shiftKey && selectedTaskId) {
-      selectRange(selectedTaskId, task.id, orderedIds)
-    } else {
-      toggleSelectTask(task.id, e.metaKey || e.ctrlKey)
+  function handleRowClick(e: React.MouseEvent) {
+    // Explicit selection mode
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault()
+      toggleSelectTask(task.id, true)
+      return
     }
-  }
 
-  function handleDoubleClick(e: React.MouseEvent) {
-    e.preventDefault()
+    if (e.shiftKey) {
+      e.preventDefault()
+      if (selectedTaskId) {
+        selectRange(selectedTaskId, task.id, orderedIds)
+      } else {
+        toggleSelectTask(task.id, false)
+      }
+      return
+    }
+
+    // Default behavior: open task detail on click.
     navigate(`/task/${task.id}`, { state: { from: location.pathname } })
   }
 
@@ -70,7 +79,7 @@ export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: S
         ref={setNodeRef}
         data-task-id={task.id}
         style={style}
-        onClick={handleSelect}
+        onClick={handleRowClick}
         onContextMenu={() => {
           if (!selectedTaskIds.has(task.id)) {
             toggleSelectTask(task.id, false)
@@ -78,7 +87,6 @@ export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: S
           }
           setSelectedTask(task.id)
         }}
-        onDoubleClick={handleDoubleClick}
         onMouseEnter={() => setHoveredTask(task.id)}
         onMouseLeave={() => setHoveredTask(null)}
         className={cn(
