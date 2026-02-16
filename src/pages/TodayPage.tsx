@@ -1,7 +1,7 @@
-import { useCallback } from "react"
+import { useCallback, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SortableTaskCard } from "@/components/SortableTaskCard"
-import { Sun, Play, Square } from "lucide-react"
+import { Sun, Play, Square, ChevronRight } from "lucide-react"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useDroppable } from "@dnd-kit/core"
 import { useTaskStore } from "@/stores/useTaskStore"
@@ -22,6 +22,7 @@ interface TodayLaneListProps {
 }
 
 function TodayLaneList({ lane, title, tasks, todayDropBucketId, bucketNameMap }: TodayLaneListProps) {
+  const [collapsed, setCollapsed] = useState(false)
   const laneIds = tasks.map((t) => t.id)
   const { setNodeRef, isOver } = useDroppable({
     id: encodeTodayLaneDroppableId(lane, todayDropBucketId),
@@ -31,29 +32,55 @@ function TodayLaneList({ lane, title, tasks, todayDropBucketId, bucketNameMap }:
   return (
     <section
       ref={setNodeRef}
-      className={cn("min-h-[120px] rounded-lg border border-border/60 bg-background/80 transition-colors", isOver && "bg-primary/5 ring-1 ring-primary/20")}
+      className={cn("rounded-lg py-1 transition-colors", isOver && "bg-primary/5")}
     >
-      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h2>
-        <span className="text-xs text-muted-foreground">{tasks.length}</span>
-      </div>
-      <SortableContext items={laneIds} strategy={verticalListSortingStrategy}>
-        {tasks.length > 0 ? (
-          <div className="divide-y divide-border/40">
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id}
-                task={task}
-                showBucket
-                bucketName={task.bucket_id ? bucketNameMap.get(task.bucket_id) : undefined}
-                orderedIds={laneIds}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="px-3 py-4 text-sm text-muted-foreground">Drop tasks here</p>
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronRight
+            className={cn(
+              "h-3.5 w-3.5 transition-transform",
+              !collapsed && "rotate-90",
+            )}
+          />
+          <span className="text-xs font-semibold uppercase tracking-wider">
+            {title}
+          </span>
+        </button>
+
+        {tasks.length > 0 && (
+          <span className="text-[10px] font-medium text-muted-foreground/50">
+            {tasks.length}
+          </span>
         )}
-      </SortableContext>
+      </div>
+
+      {!collapsed && (
+        <div className="mt-1">
+          <SortableContext items={laneIds} strategy={verticalListSortingStrategy}>
+            {tasks.length > 0 ? (
+              <div className="divide-y divide-border/30">
+                {tasks.map((task) => (
+                  <SortableTaskCard
+                    key={task.id}
+                    task={task}
+                    showBucket
+                    bucketName={task.bucket_id ? bucketNameMap.get(task.bucket_id) : undefined}
+                    orderedIds={laneIds}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="px-3 py-2 text-xs italic text-muted-foreground/40">
+                Drop tasks here
+              </p>
+            )}
+          </SortableContext>
+        </div>
+      )}
     </section>
   )
 }
@@ -139,7 +166,7 @@ export function TodayPage() {
       <div ref={dropRef} className={cn("min-h-[200px] flex-1 rounded-lg transition-colors", isOver && "bg-primary/5 ring-1 ring-primary/20")}>
         {todayTasks.length > 0 ? (
           splitTodaySections ? (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
               <TodayLaneList
                 lane="now"
                 title="Now"
