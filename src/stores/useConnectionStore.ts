@@ -215,6 +215,7 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         result = await syncAttioConnection(conn)
       }
       const items = result.items
+      const itemBySourceId = new Map(items.map((item) => [item.sourceId, item]))
 
       const existingConnectionTasks = await db.tasks
         .where("source")
@@ -236,6 +237,18 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         const taskStore = useTaskStore.getState()
         for (const task of reopenedLocally) {
           await taskStore.uncompleteTask(task.id, { skipWriteback: true })
+
+          // Todoist recurring tasks keep the same source ID when completed.
+          // If the next due date moved into the future, don't keep them pinned in Today.
+          if (conn.type === "todoist" && task.section === "today" && task.source_id) {
+            const sourceItem = itemBySourceId.get(task.source_id)
+            if (shouldDemoteRecurringTodoistTask(sourceItem)) {
+              const targetSection = conn.defaultSection && conn.defaultSection !== "today"
+                ? conn.defaultSection
+                : "sooner"
+              await taskStore.moveToSection(task.id, targetSection)
+            }
+          }
         }
       }
 
@@ -413,6 +426,32 @@ function matchItemToRule(item: InboxItem, rule: ImportRule): boolean {
     default:
       return false
   }
+}
+
+function parseDateOnlyAsLocal(dateOnly: string): Date | null {
+  const parts = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!parts) return null
+  return new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]))
+}
+
+/**
+ * Recurring Todoist tasks remain active after completion and shift their due date.
+ * If the next occurrence is in the future, move them out of Today when reopening.
+ */
+function shouldDemoteRecurringTodoistTask(item: InboxItem | undefined): boolean {
+  if (!item || item.sourceType !== "todoist") return false
+  const metadata = item.metadata as Record<string, unknown>
+  const due = metadata.due as { date?: string; is_recurring?: boolean } | null | undefined
+  if (!due?.is_recurring || !due.date) return false
+
+  const dueDate = parseDateOnlyAsLocal(due.date)
+  if (!dueDate) return false
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  dueDate.setHours(0, 0, 0, 0)
+
+  return dueDate.getTime() > today.getTime()
 }
 
 // ============================================================================
