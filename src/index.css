@@ -461,3 +461,26 @@
   opacity: 0;
   pointer-events: none;
 }
+
+/* ─── Triage drag UX ───
+ * While dragging an inbox item out of Triage, de-emphasize the sheet and
+ * lighten the backdrop so destination surfaces are easier to see.
+ */
+body.flowpin-triage-open [data-slot="sheet-overlay"] {
+  background-color: rgb(0 0 0 / 34%);
+  transition: background-color 140ms ease;
+}
+
+body.flowpin-triage-open .flowpin-triage-sheet {
+  transition: opacity 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+body.flowpin-triage-open.flowpin-dragging-inbox [data-slot="sheet-overlay"] {
+  background-color: rgb(0 0 0 / 12%);
+}
+
+body.flowpin-triage-open.flowpin-dragging-inbox .flowpin-triage-sheet {
+  opacity: 0.95;
+  transform: translateY(2px);
+  box-shadow: 0 -8px 18px rgb(0 0 0 / 10%);
+}

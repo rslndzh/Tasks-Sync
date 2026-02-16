@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Sheet,
   SheetContent,
@@ -15,6 +15,8 @@ interface MobileIntegrationsSheetProps {
   onOpenChange: (open: boolean) => void
 }
 
+const TRIAGE_OPEN_CLASS = "flowpin-triage-open"
+
 /**
  * Bottom sheet for triaging integration inbox items on mobile.
  * Shows connection tabs at the top and the inbox panel below.
@@ -26,13 +28,21 @@ export function MobileIntegrationsSheet({ open, onOpenChange }: MobileIntegratio
   const activeConnections = connections.filter((c) => c.isActive)
   const [activeTab, setActiveTab] = useState<string | null>(activeConnections[0]?.id ?? null)
 
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    document.body.classList.toggle(TRIAGE_OPEN_CLASS, open)
+    return () => {
+      document.body.classList.remove(TRIAGE_OPEN_CLASS)
+    }
+  }, [open])
+
   // Ensure the active tab is valid
   const resolvedTab = activeConnections.find((c) => c.id === activeTab) ? activeTab : activeConnections[0]?.id ?? null
 
   if (activeConnections.length === 0) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="max-h-[70svh] rounded-t-2xl px-4 pb-8">
+        <SheetContent side="bottom" className="flowpin-triage-sheet max-h-[70svh] rounded-t-2xl px-4 pb-8">
           <SheetHeader className="pb-3">
             <SheetTitle className="text-left text-base">Integrations</SheetTitle>
           </SheetHeader>
@@ -46,7 +56,7 @@ export function MobileIntegrationsSheet({ open, onOpenChange }: MobileIntegratio
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="flex max-h-[80svh] flex-col rounded-t-2xl px-0 pb-8">
+      <SheetContent side="bottom" className="flowpin-triage-sheet flex max-h-[80svh] flex-col rounded-t-2xl px-0 pb-8">
         <SheetHeader className="px-4 pb-2">
           <SheetTitle className="text-left text-base">Triage Inbox</SheetTitle>
         </SheetHeader>

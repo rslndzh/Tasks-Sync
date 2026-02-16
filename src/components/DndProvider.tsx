@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import type { ReactNode } from "react"
 import {
   DndContext,
@@ -38,6 +38,13 @@ interface DragOriginEntry {
   bucket_id: string | null
 }
 
+const INBOX_DRAGGING_CLASS = "flowpin-dragging-inbox"
+
+function setInboxDraggingBodyClass(isDraggingInboxItem: boolean): void {
+  if (typeof document === "undefined") return
+  document.body.classList.toggle(INBOX_DRAGGING_CLASS, isDraggingInboxItem)
+}
+
 export function DndProvider({ children }: DndProviderProps) {
   const [activeData, setActiveData] = useState<DragData | null>(null)
   /** Origins for ALL tasks involved in this drag (active + multi-selected) */
@@ -52,10 +59,17 @@ export function DndProvider({ children }: DndProviderProps) {
     }),
   )
 
+  useEffect(() => {
+    return () => {
+      setInboxDraggingBodyClass(false)
+    }
+  }, [])
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current as DragData | undefined
     if (data) {
       setActiveData(data)
+      setInboxDraggingBodyClass(data.type === "inbox-item")
 
       if (data.type === "task") {
         const { selectedTaskIds, toggleSelectTask, tasks } = useTaskStore.getState()
@@ -147,6 +161,7 @@ export function DndProvider({ children }: DndProviderProps) {
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     setActiveData(null)
+    setInboxDraggingBodyClass(false)
 
     const { active, over } = event
     if (!over) {
@@ -315,6 +330,7 @@ export function DndProvider({ children }: DndProviderProps) {
   const handleDragCancel = useCallback(() => {
     revertDrag()
     setActiveData(null)
+    setInboxDraggingBodyClass(false)
     setDragOrigins([])
   }, [revertDrag])
 
