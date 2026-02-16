@@ -1,3 +1,4 @@
+import Dexie from "dexie"
 import { db } from "@/lib/db"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { isAuthenticated, getCurrentUserId } from "@/lib/auth"
@@ -29,6 +30,22 @@ function extractErrorMessage(err: unknown): string {
     return String((err as { message: unknown }).message)
   }
   return String(err)
+}
+
+function isMissingObjectStoreError(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return normalized.includes("objectstore") && normalized.includes("was not found")
+}
+
+/**
+ * Recover from IndexedDB schema drift/corruption by rebuilding local cache from cloud.
+ * Safe for authenticated users because Supabase is the source of truth.
+ */
+async function repairLocalCacheFromCloud(): Promise<void> {
+  db.close()
+  await Dexie.delete("flowpin")
+  await pullFromSupabase()
+  await reloadStoresFromDexie()
 }
 
 // ============================================================================
@@ -699,6 +716,24 @@ export async function syncNow(): Promise<void> {
     }
   } catch (err) {
     const message = extractErrorMessage(err)
+
+    // Self-heal stale/broken IndexedDB schema from older deployed builds.
+    if (isMissingObjectStoreError(message) && isAuthenticated()) {
+      try {
+        await repairLocalCacheFromCloud()
+        // Queue is local-only and was wiped during repair; cloud state is now loaded.
+        store.setPendingCount(0)
+        if (useSyncStore.getState().status !== "error") {
+          store.setSynced()
+        }
+        return
+      } catch (repairErr) {
+        const repairMessage = extractErrorMessage(repairErr)
+        store.setError(`Sync failed after local cache repair: ${repairMessage}`)
+        return
+      }
+    }
+
     if (message.includes("schema cache") || message.includes("does not exist")) {
       store.setError("Cloud database isn't set up yet. Run the setup SQL in your Supabase SQL Editor (see scripts/setup-db.sql).")
     } else {
