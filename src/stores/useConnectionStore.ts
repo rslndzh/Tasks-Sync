@@ -252,6 +252,27 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         }
       }
 
+      // Todoist recurring tasks can remain "active" while their due date moves
+      // to a future occurrence. Keep them out of Today in that case.
+      if (conn.type === "todoist") {
+        const taskStore = useTaskStore.getState()
+        const targetSection = conn.defaultSection && conn.defaultSection !== "today"
+          ? conn.defaultSection
+          : "sooner"
+
+        const activeRecurringFutureTasks = existingConnectionTasks.filter((task) =>
+          task.status === "active" &&
+          task.section === "today" &&
+          task.source_id &&
+          activeSourceIds.has(task.source_id) &&
+          shouldDemoteRecurringTodoistTask(itemBySourceId.get(task.source_id)),
+        )
+
+        for (const task of activeRecurringFutureTasks) {
+          await taskStore.moveToSection(task.id, targetSection)
+        }
+      }
+
       // Inbound completion detection: only for providers where "not fetched"
       // truly means "no longer active" (Todoist/Attio).
       if (canInferCompletionByAbsence(conn.type)) {
@@ -428,10 +449,15 @@ function matchItemToRule(item: InboxItem, rule: ImportRule): boolean {
   }
 }
 
-function parseDateOnlyAsLocal(dateOnly: string): Date | null {
-  const parts = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!parts) return null
-  return new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]))
+function parseDueAsLocalDay(value: string): Date | null {
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (dateOnly) {
+    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
 }
 
 /**
@@ -444,12 +470,11 @@ function shouldDemoteRecurringTodoistTask(item: InboxItem | undefined): boolean 
   const due = metadata.due as { date?: string; is_recurring?: boolean } | null | undefined
   if (!due?.is_recurring || !due.date) return false
 
-  const dueDate = parseDateOnlyAsLocal(due.date)
+  const dueDate = parseDueAsLocalDay(due.date)
   if (!dueDate) return false
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  dueDate.setHours(0, 0, 0, 0)
 
   return dueDate.getTime() > today.getTime()
 }
