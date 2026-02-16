@@ -41,6 +41,22 @@ function isMissingObjectStoreError(message: string): boolean {
   return hasObjectStoreText && normalized.includes("not found")
 }
 
+const REPAIR_RELOAD_FLAG = "flowpin:repair-reload-attempted"
+
+function triggerOneTimeRepairReload(): boolean {
+  if (typeof window === "undefined" || typeof window.sessionStorage === "undefined") return false
+  const attempted = window.sessionStorage.getItem(REPAIR_RELOAD_FLAG) === "1"
+  if (attempted) return false
+  window.sessionStorage.setItem(REPAIR_RELOAD_FLAG, "1")
+  window.location.reload()
+  return true
+}
+
+function clearRepairReloadFlag(): void {
+  if (typeof window === "undefined" || typeof window.sessionStorage === "undefined") return
+  window.sessionStorage.removeItem(REPAIR_RELOAD_FLAG)
+}
+
 /**
  * Recover from IndexedDB schema drift/corruption by rebuilding local cache from cloud.
  * Safe for authenticated users because Supabase is the source of truth.
@@ -48,9 +64,18 @@ function isMissingObjectStoreError(message: string): boolean {
 async function repairLocalCacheFromCloud(): Promise<void> {
   db.close()
   await Dexie.delete("flowpin")
-  await db.open()
-  await pullFromSupabase()
-  await reloadStoresFromDexie()
+  try {
+    await db.open()
+    await pullFromSupabase()
+    await reloadStoresFromDexie()
+    clearRepairReloadFlag()
+  } catch (err) {
+    const message = extractErrorMessage(err)
+    if (isMissingObjectStoreError(message) && triggerOneTimeRepairReload()) {
+      return
+    }
+    throw err
+  }
 }
 
 /**
