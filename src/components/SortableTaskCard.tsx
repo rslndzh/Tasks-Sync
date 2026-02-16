@@ -23,7 +23,7 @@ interface SortableTaskCardProps {
  * to open task detail, and carries DragData for the global DndProvider.
  */
 export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: SortableTaskCardProps) {
-  const { selectedTaskId, selectedTaskIds, toggleSelectTask, selectRange } = useTaskStore()
+  const { selectedTaskId, selectedTaskIds, toggleSelectTask, selectRange, setHoveredTask } = useTaskStore()
   const navigate = useNavigate()
   const location = useLocation()
   const trackedMap = useTrackedTimeMap()
@@ -66,9 +66,12 @@ export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: S
   return (
     <div
       ref={setNodeRef}
+      data-task-id={task.id}
       style={style}
       onClick={handleSelect}
       onDoubleClick={handleDoubleClick}
+      onMouseEnter={() => setHoveredTask(task.id)}
+      onMouseLeave={() => setHoveredTask(null)}
       className={cn(
         isDragging && "z-10 opacity-40",
       )}

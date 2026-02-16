@@ -12,9 +12,9 @@ import type { SectionType } from "@/types/database"
  */
 export function useKeyboardShortcuts() {
   const {
-    tasks,
     selectedTaskId,
     selectedTaskIds,
+    hoveredTaskId,
     toggleSelectTask,
     selectRange,
     clearSelection,
@@ -29,9 +29,16 @@ export function useKeyboardShortcuts() {
       // Don't intercept when typing in inputs
       if (isInputFocused()) return
 
-      const activeTasks = tasks
-      const currentIndex = activeTasks.findIndex((t) => t.id === selectedTaskId)
-      const orderedIds = activeTasks.map((t) => t.id)
+      const orderedIds = Array.from(document.querySelectorAll<HTMLElement>("[data-task-id]"))
+        .map((node) => node.dataset.taskId ?? "")
+        .filter(Boolean)
+      const visibleIdSet = new Set(orderedIds)
+      const selectedVisibleId = selectedTaskId && visibleIdSet.has(selectedTaskId)
+        ? selectedTaskId
+        : [...selectedTaskIds].find((id) => visibleIdSet.has(id)) ?? null
+      const hoveredVisibleId = hoveredTaskId && visibleIdSet.has(hoveredTaskId) ? hoveredTaskId : null
+      const baseId = selectedVisibleId ?? hoveredVisibleId
+      const currentIndex = baseId ? orderedIds.indexOf(baseId) : -1
 
       switch (e.key) {
         // Clear selection
@@ -47,13 +54,13 @@ export function useKeyboardShortcuts() {
         case "ArrowUp":
         case "k": {
           e.preventDefault()
-          if (activeTasks.length === 0) return
-          const prev = currentIndex <= 0 ? activeTasks.length - 1 : currentIndex - 1
-          const prevId = activeTasks[prev].id
+          if (orderedIds.length === 0) return
+          const prev = currentIndex <= 0 ? 0 : currentIndex - 1
+          const prevId = orderedIds[prev]
 
-          if (e.shiftKey && selectedTaskId) {
-            // Extend selection — selectRange already updates selectedTaskId
-            selectRange(selectedTaskId, prevId, orderedIds)
+          if (e.shiftKey && (baseId ?? prevId)) {
+            // Extend selection from focused/hovered anchor using visible list order.
+            selectRange(baseId ?? prevId, prevId, orderedIds)
           } else {
             toggleSelectTask(prevId, false)
           }
@@ -62,12 +69,14 @@ export function useKeyboardShortcuts() {
         case "ArrowDown":
         case "j": {
           e.preventDefault()
-          if (activeTasks.length === 0) return
-          const next = currentIndex >= activeTasks.length - 1 ? 0 : currentIndex + 1
-          const nextId = activeTasks[next].id
+          if (orderedIds.length === 0) return
+          const next = currentIndex === -1
+            ? 0
+            : (currentIndex >= orderedIds.length - 1 ? orderedIds.length - 1 : currentIndex + 1)
+          const nextId = orderedIds[next]
 
-          if (e.shiftKey && selectedTaskId) {
-            selectRange(selectedTaskId, nextId, orderedIds)
+          if (e.shiftKey && (baseId ?? nextId)) {
+            selectRange(baseId ?? nextId, nextId, orderedIds)
           } else {
             toggleSelectTask(nextId, false)
           }
@@ -128,5 +137,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [tasks, selectedTaskId, selectedTaskIds, toggleSelectTask, selectRange, clearSelection, moveToSection, completeTask, navigate, location.pathname])
+  }, [selectedTaskId, selectedTaskIds, hoveredTaskId, toggleSelectTask, selectRange, clearSelection, moveToSection, completeTask, navigate, location.pathname])
 }

@@ -18,6 +18,8 @@ interface TaskState {
   selectedTaskIds: Set<string>
   /** Anchor task ID for Shift+Arrow range selection (start of range) */
   selectionAnchorId: string | null
+  /** Task currently hovered with mouse (used as keyboard fallback focus) */
+  hoveredTaskId: string | null
 
   // Actions
   loadTasks: () => Promise<void>
@@ -29,6 +31,7 @@ interface TaskState {
   moveToSection: (id: string, section: SectionType) => Promise<void>
   moveToBucket: (id: string, bucketId: string) => Promise<void>
   setSelectedTask: (id: string | null) => void
+  setHoveredTask: (id: string | null) => void
 
   // Multi-select actions
   toggleSelectTask: (id: string, multi: boolean) => void
@@ -56,6 +59,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   selectedTaskId: null,
   selectedTaskIds: new Set<string>(),
   selectionAnchorId: null,
+  hoveredTaskId: null,
 
   loadTasks: async () => {
     const tasks = (await db.tasks.where("status").equals("active").toArray()).map((task) => ({
@@ -225,6 +229,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   setSelectedTask: (id) => set({ selectedTaskId: id }),
+  setHoveredTask: (id) => set({ hoveredTaskId: id }),
 
   // --- Multi-select ---
 
@@ -255,8 +260,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   selectRange: (fromId, toId, orderedIds) => {
     set((state) => {
-      // First Shift+Arrow: anchor is the currently focused task
-      const anchor = state.selectionAnchorId ?? fromId
+      // First Shift+Arrow: anchor is the currently focused task.
+      // If previous anchor is stale/not visible, fall back to the current fromId.
+      const persistedAnchor = state.selectionAnchorId
+      const anchor = persistedAnchor && orderedIds.includes(persistedAnchor) ? persistedAnchor : fromId
       const anchorIdx = orderedIds.indexOf(anchor)
       const endIdx = orderedIds.indexOf(toId)
       if (anchorIdx === -1 || endIdx === -1) return state
