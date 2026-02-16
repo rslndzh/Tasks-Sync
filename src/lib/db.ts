@@ -1,4 +1,5 @@
 import Dexie from "dexie"
+import type { Transaction } from "dexie"
 import type {
   AppState,
   IntegrationConnection,
@@ -10,6 +11,14 @@ import type {
   SyncQueueItem,
 } from "@/types/local"
 import type { ImportRule } from "@/types/import-rule"
+
+function getTableIfExists(tx: Transaction, name: string): Dexie.Table<Record<string, unknown>, unknown> | null {
+  try {
+    return tx.table(name) as unknown as Dexie.Table<Record<string, unknown>, unknown>
+  } catch {
+    return null
+  }
+}
 
 /**
  * Flowpin's local database (IndexedDB via Dexie).
@@ -171,41 +180,78 @@ class FlowpinDB extends Dexie {
         return UUID_RE.test(trimmed) ? trimmed : null
       }
 
-      await tx.table("connections").toCollection().modify((conn: Record<string, unknown>) => {
-        const nextDefaultBucketId = normalizeNullableUuid(conn.defaultBucketId)
-        if (conn.defaultBucketId !== nextDefaultBucketId) conn.defaultBucketId = nextDefaultBucketId
-        if (conn.defaultSection === "") conn.defaultSection = null
-      })
+      const connectionsTable = getTableIfExists(tx, "connections")
+      if (connectionsTable) {
+        await connectionsTable.toCollection().modify((conn: Record<string, unknown>) => {
+          const nextDefaultBucketId = normalizeNullableUuid(conn.defaultBucketId)
+          if (conn.defaultBucketId !== nextDefaultBucketId) conn.defaultBucketId = nextDefaultBucketId
+          if (conn.defaultSection === "") conn.defaultSection = null
+        })
+      }
 
-      await tx.table("importRules").toCollection().modify((rule: Record<string, unknown>) => {
-        const nextTargetBucketId = normalizeNullableUuid(rule.target_bucket_id)
-        if (rule.target_bucket_id !== nextTargetBucketId) rule.target_bucket_id = nextTargetBucketId
-      })
+      const importRulesTable = getTableIfExists(tx, "importRules") ?? getTableIfExists(tx, "import_rules")
+      if (importRulesTable) {
+        await importRulesTable.toCollection().modify((rule: Record<string, unknown>) => {
+          const nextTargetBucketId = normalizeNullableUuid(rule.target_bucket_id)
+          if (rule.target_bucket_id !== nextTargetBucketId) rule.target_bucket_id = nextTargetBucketId
+        })
+      }
 
-      await tx.table("tasks").toCollection().modify((task: Record<string, unknown>) => {
-        const nextBucketId = normalizeNullableUuid(task.bucket_id)
-        const nextConnectionId = normalizeNullableUuid(task.connection_id)
-        if (task.bucket_id !== nextBucketId) task.bucket_id = nextBucketId
-        if (task.connection_id !== nextConnectionId) task.connection_id = nextConnectionId
-      })
+      const tasksTable = getTableIfExists(tx, "tasks")
+      if (tasksTable) {
+        await tasksTable.toCollection().modify((task: Record<string, unknown>) => {
+          const nextBucketId = normalizeNullableUuid(task.bucket_id)
+          const nextConnectionId = normalizeNullableUuid(task.connection_id)
+          if (task.bucket_id !== nextBucketId) task.bucket_id = nextBucketId
+          if (task.connection_id !== nextConnectionId) task.connection_id = nextConnectionId
+        })
+      }
 
-      await tx.table("syncQueue").toCollection().modify((item: Record<string, unknown>) => {
-        const payload = item.payload as Record<string, unknown> | undefined
-        if (!payload || typeof payload !== "object") return
+      const syncQueueTable = getTableIfExists(tx, "syncQueue")
+      if (syncQueueTable) {
+        await syncQueueTable.toCollection().modify((item: Record<string, unknown>) => {
+          const payload = item.payload as Record<string, unknown> | undefined
+          if (!payload || typeof payload !== "object") return
 
-        const cleaned = { ...payload }
-        let changed = false
-        for (const key of UUID_KEYS) {
-          if (!(key in cleaned)) continue
-          const next = normalizeNullableUuid(cleaned[key])
-          if (cleaned[key] !== next) {
-            cleaned[key] = next
-            changed = true
+          const cleaned = { ...payload }
+          let changed = false
+          for (const key of UUID_KEYS) {
+            if (!(key in cleaned)) continue
+            const next = normalizeNullableUuid(cleaned[key])
+            if (cleaned[key] !== next) {
+              cleaned[key] = next
+              changed = true
+            }
           }
-        }
 
-        if (changed) item.payload = cleaned
-      })
+          if (changed) item.payload = cleaned
+        })
+      }
+    })
+
+    // v9: Compatibility migration for legacy store name `import_rules`.
+    // Some deployed builds used snake_case store naming; ensure we can read and
+    // copy those rows into the canonical camelCase `importRules` store.
+    this.version(9).stores({
+      buckets: "id, user_id, position, is_default",
+      tasks:
+        "id, user_id, bucket_id, section, source, source_id, status, connection_id, [user_id+bucket_id], [user_id+section], [user_id+source]",
+      sessions: "id, user_id, is_active, [user_id+is_active]",
+      timeEntries: "id, session_id, user_id, task_id, started_at",
+      importRules: "id, user_id, integration_type, is_active",
+      import_rules: "id, user_id, integration_type, is_active",
+      integrationKeys: "integrationId, type",
+      connections: "id, type, isActive",
+      syncQueue: "id, table, createdAt",
+      appState: "key",
+    }).upgrade(async (tx) => {
+      const canonical = getTableIfExists(tx, "importRules")
+      const legacy = getTableIfExists(tx, "import_rules")
+      if (!canonical || !legacy) return
+
+      const legacyRows = await legacy.toArray()
+      if (legacyRows.length === 0) return
+      await canonical.bulkPut(legacyRows)
     })
   }
 }
