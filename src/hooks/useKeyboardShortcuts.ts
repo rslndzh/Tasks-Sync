@@ -22,6 +22,7 @@ export function useKeyboardShortcuts() {
     selectRange,
     clearSelection,
     moveToSection,
+    updateTask,
     completeTask,
     archiveTask,
   } = useTaskStore()
@@ -135,6 +136,27 @@ export function useKeyboardShortcuts() {
           for (const id of todayIds) void moveToSection(id, "sooner" as SectionType)
           break
         }
+        // Set estimate (minutes) for selected task(s)
+        case "e": {
+          if (ids.length === 0) return
+          e.preventDefault()
+          const selectedTasks = ids
+            .map((id) => tasks.find((t) => t.id === id))
+            .filter((t): t is NonNullable<typeof t> => Boolean(t))
+          const values = new Set(selectedTasks.map((t) => t.estimate_minutes ?? null))
+          const sharedEstimate = values.size === 1 ? [...values][0] : null
+          const raw = window.prompt(
+            "Estimate in minutes. Leave empty to clear.",
+            sharedEstimate != null && sharedEstimate > 0 ? String(sharedEstimate) : "",
+          )
+          if (raw === null) return
+          const trimmed = raw.trim()
+          const parsed = trimmed ? Number.parseInt(trimmed, 10) : 0
+          if (trimmed && (!Number.isFinite(parsed) || parsed < 0)) return
+          const estimate = parsed > 0 ? parsed : null
+          for (const id of ids) void updateTask(id, { estimate_minutes: estimate })
+          break
+        }
 
         // Complete task(s)
         case "d": {
@@ -233,6 +255,7 @@ export function useKeyboardShortcuts() {
     selectRange,
     clearSelection,
     moveToSection,
+    updateTask,
     completeTask,
     archiveTask,
     isRunning,

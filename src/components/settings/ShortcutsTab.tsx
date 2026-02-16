@@ -14,6 +14,7 @@ export function ShortcutsTab() {
         SHORTCUTS.moveToSooner,
         SHORTCUTS.moveToLater,
         SHORTCUTS.removeFromToday,
+        SHORTCUTS.setEstimate,
         SHORTCUTS.moveToBucket,
         SHORTCUTS.completeTask,
         SHORTCUTS.archiveTask,

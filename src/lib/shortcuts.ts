@@ -24,6 +24,7 @@ export const SHORTCUTS: Record<string, Shortcut> = {
   moveToSooner: { key: "2", label: "2", description: "Move task to Sooner", scope: "task" },
   moveToLater: { key: "3", label: "3", description: "Move task to Later", scope: "task" },
   removeFromToday: { key: "r", label: "R", description: "Remove selected task(s) from Today", scope: "task" },
+  setEstimate: { key: "e", label: "E", description: "Set estimate in minutes", scope: "task" },
   moveToBucket: { key: "b", label: "B", description: "Open move-to-bucket menu", scope: "task" },
   completeTask: { key: "d", label: "D", description: "Mark selected task(s) done", scope: "task" },
   archiveTask: { key: "a", label: "A", description: "Archive selected task(s)", scope: "task" },

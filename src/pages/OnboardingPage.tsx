@@ -149,6 +149,7 @@ export function OnboardingPage() {
                 <div className="space-y-2 text-sm">
                   <ShortcutRow keys={["1", "2", "3"]} description="Move to Today / Sooner / Later" />
                   <ShortcutRow keys={["F"]} description="Start or switch focus" />
+                  <ShortcutRow keys={["E"]} description="Set estimate (minutes)" />
                   <ShortcutRow keys={["D"]} description="Mark task done" />
                   <ShortcutRow keys={["A"]} description="Archive task" />
                   <ShortcutRow keys={["R"]} description="Remove from Today" />

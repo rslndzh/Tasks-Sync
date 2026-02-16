@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { Archive, ArrowUpToLine, Check, Copy, ExternalLink, FolderInput, Play, Sun, Zap } from "lucide-react"
+import { Archive, ArrowUpToLine, Check, Clock3, Copy, ExternalLink, FolderInput, Play, Sun, Zap } from "lucide-react"
 import { toast } from "sonner"
 import {
   ContextMenu,
@@ -37,6 +37,7 @@ export function TaskContextMenu({ task, children }: TaskContextMenuProps) {
   const selectedTaskIds = useTaskStore((s) => s.selectedTaskIds)
   const moveToSection = useTaskStore((s) => s.moveToSection)
   const moveToBucket = useTaskStore((s) => s.moveToBucket)
+  const updateTask = useTaskStore((s) => s.updateTask)
   const completeTask = useTaskStore((s) => s.completeTask)
   const archiveTask = useTaskStore((s) => s.archiveTask)
   const buckets = useBucketStore((s) => s.buckets)
@@ -76,6 +77,26 @@ export function TaskContextMenu({ task, children }: TaskContextMenuProps) {
     for (const t of selected) {
       await effect(t.id)
     }
+  }
+
+  function requestEstimateMinutes(): number | null | undefined {
+    const values = new Set(targetTasks.map((t) => t.estimate_minutes ?? null))
+    const sharedEstimate = values.size === 1 ? [...values][0] : null
+    const raw = window.prompt(
+      "Estimate in minutes. Leave empty to clear.",
+      sharedEstimate != null && sharedEstimate > 0 ? String(sharedEstimate) : "",
+    )
+
+    if (raw === null) return undefined
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+
+    const parsed = Number.parseInt(trimmed, 10)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast.error("Estimate should be a number of minutes.")
+      return undefined
+    }
+    return parsed > 0 ? parsed : null
   }
 
   const focusLabel = !isRunning
@@ -144,6 +165,17 @@ export function TaskContextMenu({ task, children }: TaskContextMenuProps) {
             <ContextMenuShortcut>{SHORTCUTS.removeFromToday.label}</ContextMenuShortcut>
           </ContextMenuItem>
         )}
+        <ContextMenuItem
+          onSelect={() => {
+            const estimate = requestEstimateMinutes()
+            if (estimate === undefined) return
+            void runOnTargets((id) => updateTask(id, { estimate_minutes: estimate }))
+          }}
+        >
+          <Clock3 />
+          Set estimate...
+          <ContextMenuShortcut>{SHORTCUTS.setEstimate.label}</ContextMenuShortcut>
+        </ContextMenuItem>
 
         <ContextMenuSub>
           <ContextMenuSubTrigger>
@@ -210,4 +242,3 @@ export function TaskContextMenu({ task, children }: TaskContextMenuProps) {
     </ContextMenu>
   )
 }
-

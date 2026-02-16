@@ -61,7 +61,7 @@ export function TaskCard({
   const totalTracked = trackedSeconds + (isActiveInSession ? elapsedSeconds : 0)
   const hasEstimate = task.estimate_minutes != null && task.estimate_minutes > 0
   const hasTracked = totalTracked > 0
-  const showTimeInfo = hasEstimate || hasTracked
+  const showTimeInfo = hasTracked
 
   return (
     <div
@@ -111,6 +111,11 @@ export function TaskCard({
               return Icon ? <Icon className="size-4 flex-shrink-0" /> : null
             })()}
             <span className="truncate text-sm leading-tight">{task.title}</span>
+            {hasEstimate && (
+              <span className="rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
+                {fmt(task.estimate_minutes! * 60)}
+              </span>
+            )}
           </div>
         )}
       </div>
