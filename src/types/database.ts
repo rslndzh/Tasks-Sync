@@ -10,6 +10,7 @@ export type SectionType = "today" | "sooner" | "later"
 export type TaskSource = "manual" | "linear" | "todoist" | "attio"
 export type TaskStatus = "active" | "completed" | "archived"
 export type IntegrationType = "linear" | "todoist" | "attio"
+export type TodayLaneType = "now" | "next"
 
 export interface Database {
   public: {
@@ -21,6 +22,7 @@ export interface Database {
           avatar_url: string | null
           onboarding_completed: boolean
           default_import_section: SectionType
+          today_sections_enabled: boolean
           created_at: string
           updated_at: string
         }
@@ -30,6 +32,7 @@ export interface Database {
           avatar_url?: string | null
           onboarding_completed?: boolean
           default_import_section?: SectionType
+          today_sections_enabled?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -39,6 +42,7 @@ export interface Database {
           avatar_url?: string | null
           onboarding_completed?: boolean
           default_import_section?: SectionType
+          today_sections_enabled?: boolean
           updated_at?: string
         }
       }
@@ -87,6 +91,7 @@ export interface Database {
           connection_id: string | null
           bucket_id: string | null
           section: SectionType
+          today_lane: TodayLaneType | null
           estimate_minutes: number | null
           position: number
           created_at: string
@@ -105,6 +110,7 @@ export interface Database {
           connection_id?: string | null
           bucket_id?: string | null
           section?: SectionType
+          today_lane?: TodayLaneType | null
           estimate_minutes?: number | null
           position?: number
           created_at?: string
@@ -121,6 +127,7 @@ export interface Database {
           connection_id?: string | null
           bucket_id?: string | null
           section?: SectionType
+          today_lane?: TodayLaneType | null
           estimate_minutes?: number | null
           position?: number
           updated_at?: string
@@ -273,6 +280,7 @@ export interface Database {
       task_source: TaskSource
       task_status: TaskStatus
       integration_type: IntegrationType
+      today_lane_type: TodayLaneType
     }
   }
 }

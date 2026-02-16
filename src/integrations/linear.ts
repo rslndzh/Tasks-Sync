@@ -327,6 +327,7 @@ export function mapLinearIssueToTask(
     connection_id: null,
     bucket_id: null,
     section: "sooner",
+    today_lane: null,
     estimate_minutes: issue.estimate ? issue.estimate * 60 : null, // Linear estimate is in points, rough ~60min/point
     created_at: issue.createdAt,
     updated_at: issue.updatedAt,

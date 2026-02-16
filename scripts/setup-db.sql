@@ -19,6 +19,7 @@ CREATE TYPE section_type AS ENUM ('today', 'sooner', 'later');
 CREATE TYPE task_source AS ENUM ('manual', 'linear', 'attio', 'todoist');
 CREATE TYPE task_status AS ENUM ('active', 'completed', 'archived');
 CREATE TYPE integration_type AS ENUM ('linear', 'attio', 'todoist');
+CREATE TYPE today_lane_type AS ENUM ('now', 'next');
 
 -- ============================================================================
 -- TABLES
@@ -31,6 +32,7 @@ CREATE TABLE profiles (
   avatar_url TEXT,
   onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
   default_import_section section_type NOT NULL DEFAULT 'sooner',
+  today_sections_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -61,6 +63,7 @@ CREATE TABLE tasks (
   connection_id UUID REFERENCES integrations ON DELETE SET NULL,
   bucket_id UUID REFERENCES buckets ON DELETE SET NULL,
   section section_type NOT NULL DEFAULT 'sooner',
+  today_lane today_lane_type,
   estimate_minutes INTEGER,
   position INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -132,6 +135,7 @@ CREATE TABLE time_entries (
 CREATE INDEX idx_buckets_user ON buckets (user_id, position);
 CREATE INDEX idx_tasks_user_bucket_section ON tasks (user_id, bucket_id, section) WHERE status = 'active';
 CREATE INDEX idx_tasks_user_section ON tasks (user_id, section) WHERE status = 'active';
+CREATE INDEX idx_tasks_user_today_lane ON tasks (user_id, today_lane) WHERE status = 'active' AND section = 'today';
 CREATE INDEX idx_tasks_user_source ON tasks (user_id, source) WHERE status = 'active';
 CREATE INDEX idx_tasks_connection_id ON tasks (connection_id) WHERE connection_id IS NOT NULL;
 CREATE INDEX idx_sessions_user_active ON sessions (user_id) WHERE is_active = TRUE;
@@ -283,6 +287,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE sessions;
 ALTER PUBLICATION supabase_realtime ADD TABLE time_entries;
 ALTER PUBLICATION supabase_realtime ADD TABLE integrations;
 ALTER PUBLICATION supabase_realtime ADD TABLE import_rules;
+ALTER PUBLICATION supabase_realtime ADD TABLE profiles;
 
 -- ============================================================================
 -- BACKFILL: Create profile for any existing auth users (created before this schema)

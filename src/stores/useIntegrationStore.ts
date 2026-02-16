@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { queueSync } from "@/lib/sync"
 import type { IntegrationKey } from "@/types/local"
 import type { LinearTeam, LinearUser } from "@/types/linear"
+import type { TodayLaneType } from "@/types/database"
 import { validateApiKey, fetchTeams, fetchAssignedIssues, mapLinearIssueToTask } from "@/integrations/linear"
 import type { LinearIssue } from "@/types/linear"
 
@@ -133,6 +134,7 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
       ...taskData,
       bucket_id: bucketId,
       section: section as "today" | "sooner" | "later",
+      today_lane: section === "today" ? ("now" as TodayLaneType) : null,
       position: 0,
     }
 

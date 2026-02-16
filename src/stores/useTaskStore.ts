@@ -5,7 +5,7 @@ import { getCurrentUserId } from "@/lib/auth"
 import { queueSync } from "@/lib/sync"
 import { writebackCompletion } from "@/lib/writeback"
 import type { LocalTask } from "@/types/local"
-import type { SectionType } from "@/types/database"
+import type { SectionType, TodayLaneType } from "@/types/database"
 
 interface TaskState {
   /** All active tasks */
@@ -37,10 +37,10 @@ interface TaskState {
 
   // DnD reorder actions
   /** In-memory-only move — used during drag to update SortableContexts without Dexie writes */
-  moveTaskLocal: (id: string, updates: { section?: SectionType; bucket_id?: string; position?: number }) => void
+  moveTaskLocal: (id: string, updates: { section?: SectionType; bucket_id?: string; position?: number; today_lane?: TodayLaneType | null; updated_at?: string }) => void
   /** Batch in-memory move — moves multiple tasks at once in a single state update */
-  moveTasksLocal: (entries: Array<{ id: string; updates: { section?: SectionType; bucket_id?: string; position?: number } }>) => void
-  reorderTask: (id: string, newPosition: number, newBucketId?: string, newSection?: SectionType) => Promise<void>
+  moveTasksLocal: (entries: Array<{ id: string; updates: { section?: SectionType; bucket_id?: string; position?: number; today_lane?: TodayLaneType | null; updated_at?: string } }>) => void
+  reorderTask: (id: string, newPosition: number, newBucketId?: string, newSection?: SectionType, newTodayLane?: TodayLaneType | null) => Promise<void>
   moveTasksBatch: (ids: string[], targetBucketId: string, targetSection: SectionType, insertPosition?: number) => Promise<void>
 
   // Selectors
@@ -58,7 +58,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   selectionAnchorId: null,
 
   loadTasks: async () => {
-    const tasks = await db.tasks.where("status").equals("active").toArray()
+    const tasks = (await db.tasks.where("status").equals("active").toArray()).map((task) => ({
+      ...task,
+      today_lane: task.today_lane ?? null,
+    }))
     set({ tasks, isLoaded: true })
   },
 
@@ -82,6 +85,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       connection_id: null,
       bucket_id: bucketId,
       section,
+      today_lane: section === "today" ? "now" : null,
       estimate_minutes: null,
       position: siblingCount,
       created_at: new Date().toISOString(),
@@ -190,15 +194,21 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   moveToSection: async (id, section) => {
     const now = new Date().toISOString()
-    await db.tasks.update(id, { section, updated_at: now })
+    const current = get().tasks.find((t) => t.id === id)
+    const nextLane: TodayLaneType | null =
+      section === "today"
+        ? (current?.today_lane ?? "now")
+        : null
+
+    await db.tasks.update(id, { section, today_lane: nextLane, updated_at: now })
 
     set((state) => ({
       tasks: state.tasks.map((t) =>
-        t.id === id ? { ...t, section, updated_at: now } : t,
+        t.id === id ? { ...t, section, today_lane: nextLane, updated_at: now } : t,
       ),
     }))
 
-    void queueSync("tasks", "update", { id, section, updated_at: now })
+    void queueSync("tasks", "update", { id, section, today_lane: nextLane, updated_at: now })
   },
 
   moveToBucket: async (id, bucketId) => {
@@ -284,11 +294,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }))
   },
 
-  reorderTask: async (id, newPosition, newBucketId, newSection) => {
+  reorderTask: async (id, newPosition, newBucketId, newSection, newTodayLane) => {
     const now = new Date().toISOString()
     const updates: Partial<LocalTask> = { position: newPosition, updated_at: now }
     if (newBucketId !== undefined) updates.bucket_id = newBucketId
-    if (newSection !== undefined) updates.section = newSection
+    const current = get().tasks.find((t) => t.id === id)
+    if (newSection !== undefined) {
+      updates.section = newSection
+      if (newSection !== "today") {
+        updates.today_lane = null
+      } else if (current && current.section !== "today" && newTodayLane === undefined) {
+        updates.today_lane = "now"
+      }
+    }
+    if (newTodayLane !== undefined) updates.today_lane = newTodayLane
 
     await db.tasks.update(id, updates)
 
@@ -328,6 +347,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           position: before.length + i,
           bucket_id: targetBucketId,
           section: targetSection,
+          today_lane: targetSection === "today" ? (t.today_lane ?? "now") : null,
           updated_at: now,
         },
       })

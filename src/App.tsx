@@ -17,11 +17,15 @@ import { useTodaySectionsStore } from "@/stores/useTodaySectionsStore"
 
 export function App() {
   const initializeAuth = useAuthStore((s) => s.initialize)
+  const profile = useAuthStore((s) => s.profile)
   const loadBuckets = useBucketStore((s) => s.loadBuckets)
+  const tasks = useTaskStore((s) => s.tasks)
   const loadTasks = useTaskStore((s) => s.loadTasks)
   const loadConnections = useConnectionStore((s) => s.loadConnections)
   const loadRules = useImportRuleStore((s) => s.loadRules)
   const loadTodaySections = useTodaySectionsStore((s) => s.load)
+  const applyProfileEnabled = useTodaySectionsStore((s) => s.applyProfileEnabled)
+  const syncFromTasks = useTodaySectionsStore((s) => s.syncFromTasks)
 
   // Resolve auth state + load local data on app mount
   useEffect(() => {
@@ -32,6 +36,14 @@ export function App() {
     void loadRules()
     void loadTodaySections()
   }, [initializeAuth, loadBuckets, loadTasks, loadConnections, loadRules, loadTodaySections])
+
+  useEffect(() => {
+    void applyProfileEnabled(profile?.today_sections_enabled)
+  }, [profile?.today_sections_enabled, applyProfileEnabled])
+
+  useEffect(() => {
+    void syncFromTasks(tasks)
+  }, [tasks, syncFromTasks])
 
   return (
     <BrowserRouter>

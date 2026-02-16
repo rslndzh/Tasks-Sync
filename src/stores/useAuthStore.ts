@@ -1,10 +1,20 @@
 import { create } from "zustand"
 import type { Session, User, AuthError } from "@supabase/supabase-js"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
-import { hasLocalData, migrateLocalData, pushAllToSupabase } from "@/lib/sync"
+import { hasLocalData, migrateLocalData, pushAllToSupabase, queueSync } from "@/lib/sync"
 import type { Database } from "@/types/database"
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"]
+type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"]
+
+let profileChannel: ReturnType<NonNullable<typeof supabase>["channel"]> | null = null
+
+function unsubscribeProfileChannel(): void {
+  if (profileChannel && supabase) {
+    void supabase.removeChannel(profileChannel)
+    profileChannel = null
+  }
+}
 
 interface AuthState {
   /** Supabase session (null if not logged in) */
@@ -28,6 +38,7 @@ interface AuthState {
   signOut: () => Promise<void>
   fetchProfile: () => Promise<void>
   completeOnboarding: () => Promise<void>
+  patchProfile: (updates: ProfileUpdate) => Promise<void>
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -43,6 +54,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false })
       return
     }
+
+    unsubscribeProfileChannel()
 
     // Get current session
     const {
@@ -68,6 +81,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // NOW set the user so stores and sync hook pick up the migrated data
       set({ session, user: session.user })
       await get().fetchProfile()
+      const client = supabase
+      if (!client) {
+        set({ isLoading: false })
+        return
+      }
+      profileChannel = client
+        .channel(`flowpin-profile-${session.user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "profiles",
+            filter: `id=eq.${session.user.id}`,
+          },
+          (payload) => {
+            if (payload.eventType === "DELETE") {
+              set({ profile: null })
+              return
+            }
+            set({ profile: payload.new as Profile })
+          },
+        )
+        .subscribe()
     }
 
     set({ isLoading: false })
@@ -79,6 +116,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (session?.user) {
         await get().fetchProfile()
+        unsubscribeProfileChannel()
+        const client = supabase
+        if (!client) {
+          set({ profile: null })
+          return
+        }
+        profileChannel = client
+          .channel(`flowpin-profile-${session.user.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "profiles",
+              filter: `id=eq.${session.user.id}`,
+            },
+            (payload) => {
+              if (payload.eventType === "DELETE") {
+                set({ profile: null })
+                return
+              }
+              set({ profile: payload.new as Profile })
+            },
+          )
+          .subscribe()
 
         // Migrate local data on first sign-in (anonymous → authenticated)
         const isNewLogin = !previousUser && session.user
@@ -96,6 +158,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
         }
       } else {
+        unsubscribeProfileChannel()
         set({ profile: null })
       }
     })
@@ -134,6 +197,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (supabase) {
       await supabase.auth.signOut()
     }
+    unsubscribeProfileChannel()
     // Keep local data — user might want to continue using locally
     set({ session: null, user: null, profile: null })
   },
@@ -162,5 +226,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set((state) => ({
       profile: state.profile ? { ...state.profile, onboarding_completed: true } : null,
     }))
+  },
+
+  patchProfile: async (updates) => {
+    const user = get().user
+    if (!user) return
+
+    const now = new Date().toISOString()
+    const payload: Record<string, unknown> = {
+      id: user.id,
+      ...updates,
+      updated_at: now,
+    }
+
+    set((state) => ({
+      profile: state.profile
+        ? { ...state.profile, ...updates, updated_at: now }
+        : state.profile,
+    }))
+
+    void queueSync("profiles", "update", payload)
   },
 }))

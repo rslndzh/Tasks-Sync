@@ -345,8 +345,19 @@ export function DndProvider({ children }: DndProviderProps) {
         if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
           const reordered = arrayMove(containerTasks, oldIndex, newIndex)
           reordered.forEach((task, i) => {
-            void store.reorderTask(task.id, i, targetBucketId ?? undefined, targetSection)
+            void store.reorderTask(
+              task.id,
+              i,
+              targetBucketId ?? undefined,
+              targetSection,
+              targetSection === "today" ? (targetTodayLane ?? undefined) : undefined,
+            )
           })
+          if (todayStore.enabled && targetSection === "today" && targetTodayLane) {
+            void todayStore.setTaskLanes(
+              draggedIds.map((id) => ({ taskId: id, lane: targetTodayLane })),
+            )
+          }
           setDragOrigins([])
           return
         }
@@ -356,7 +367,13 @@ export function DndProvider({ children }: DndProviderProps) {
       containerTasks.forEach((task, i) => {
         const wasDragged = draggedIds.includes(task.id)
         if (task.position !== i || wasDragged) {
-          void store.reorderTask(task.id, i, targetBucketId ?? undefined, targetSection)
+          void store.reorderTask(
+            task.id,
+            i,
+            targetBucketId ?? undefined,
+            targetSection,
+            targetSection === "today" ? (targetTodayLane ?? undefined) : undefined,
+          )
         }
       })
 
@@ -386,7 +403,13 @@ export function DndProvider({ children }: DndProviderProps) {
           .sort((a, b) => a.position - b.position)
         sourceTasks.forEach((task, i) => {
           if (task.position !== i) {
-            void store.reorderTask(task.id, i)
+            void store.reorderTask(
+              task.id,
+              i,
+              undefined,
+              undefined,
+              section === "today" ? (lane ?? undefined) : undefined,
+            )
           }
         })
       }

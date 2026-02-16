@@ -148,12 +148,13 @@ const MAX_RETRIES = 3
  * e.g. tasks must exist before sessions that reference them.
  */
 const TABLE_PRIORITY: Record<string, number> = {
-  buckets: 0,
-  integrations: 1,
-  import_rules: 2,
-  tasks: 3,
-  sessions: 4,
-  time_entries: 5,
+  profiles: 0,
+  buckets: 1,
+  integrations: 2,
+  import_rules: 3,
+  tasks: 4,
+  sessions: 5,
+  time_entries: 6,
 }
 
 /**

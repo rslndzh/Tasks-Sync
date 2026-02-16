@@ -34,6 +34,7 @@ export function mapInboxItemToLocalTask(
   bucketId: string,
   section: "today" | "sooner" | "later",
   position: number,
+  todayLane?: "now" | "next",
 ): LocalTask {
   // Pull original description from provider metadata if available
   const sourceDesc = typeof item.metadata.description === "string" ? item.metadata.description : null
@@ -50,6 +51,7 @@ export function mapInboxItemToLocalTask(
     connection_id: item.connectionId,
     bucket_id: bucketId,
     section,
+    today_lane: section === "today" ? (todayLane ?? "now") : null,
     estimate_minutes: null,
     position,
     created_at: new Date().toISOString(),

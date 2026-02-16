@@ -1,4 +1,4 @@
-import type { IntegrationType, SectionType, TaskSource, TaskStatus } from "./database"
+import type { IntegrationType, SectionType, TaskSource, TaskStatus, TodayLaneType } from "./database"
 
 /**
  * Local-only types for Dexie (IndexedDB).
@@ -36,6 +36,7 @@ export interface LocalTask {
   connection_id: string | null
   bucket_id: string | null
   section: SectionType
+  today_lane: TodayLaneType | null
   estimate_minutes: number | null
   position: number
   created_at: string
