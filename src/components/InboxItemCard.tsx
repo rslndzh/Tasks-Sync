@@ -4,7 +4,6 @@ import type { ImportRule } from "@/types/import-rule"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useImportRuleStore } from "@/stores/useImportRuleStore"
 import { useDraggable } from "@dnd-kit/core"
-import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Download, ExternalLink } from "lucide-react"
@@ -163,12 +162,10 @@ export function InboxItemCard({ item, connectionId, onImport }: InboxItemCardPro
 
   const dragData: DragData = { type: "inbox-item", item, connectionId }
 
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `inbox:${item.id}`,
     data: dragData,
   })
-
-  const style = { transform: CSS.Transform.toString(transform) }
 
   const handleImport = () => {
     if (!selectedBucket) return
@@ -182,7 +179,6 @@ export function InboxItemCard({ item, connectionId, onImport }: InboxItemCardPro
   return (
     <div
       ref={setNodeRef}
-      style={style}
       className={cn(
         "group relative rounded-md border border-border/70 bg-card text-xs",
         "border-l-[3px] transition-all duration-150 cursor-grab active:cursor-grabbing",
