@@ -13,6 +13,7 @@ import { useAuthStore } from "@/stores/useAuthStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useConnectionStore } from "@/stores/useConnectionStore"
+import { useTodaySectionsStore } from "@/stores/useTodaySectionsStore"
 
 export function App() {
   const initializeAuth = useAuthStore((s) => s.initialize)
@@ -20,6 +21,7 @@ export function App() {
   const loadTasks = useTaskStore((s) => s.loadTasks)
   const loadConnections = useConnectionStore((s) => s.loadConnections)
   const loadRules = useImportRuleStore((s) => s.loadRules)
+  const loadTodaySections = useTodaySectionsStore((s) => s.load)
 
   // Resolve auth state + load local data on app mount
   useEffect(() => {
@@ -28,7 +30,8 @@ export function App() {
     void loadTasks()
     void loadConnections()
     void loadRules()
-  }, [initializeAuth, loadBuckets, loadTasks, loadConnections, loadRules])
+    void loadTodaySections()
+  }, [initializeAuth, loadBuckets, loadTasks, loadConnections, loadRules, loadTodaySections])
 
   return (
     <BrowserRouter>

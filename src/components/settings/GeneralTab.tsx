@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -6,11 +7,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useTodaySectionsStore } from "@/stores/useTodaySectionsStore"
 
 /**
  * General settings tab — display name, default import section, theme toggle (future).
  */
 export function GeneralTab() {
+  const enabled = useTodaySectionsStore((s) => s.enabled)
+  const load = useTodaySectionsStore((s) => s.load)
+  const setEnabled = useTodaySectionsStore((s) => s.setEnabled)
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
   return (
     <div className="space-y-6">
       <div>
@@ -36,6 +46,28 @@ export function GeneralTab() {
             <SelectItem value="later">Later</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Today view split */}
+      <div className="space-y-2">
+        <Label htmlFor="today-now-next" className="block">
+          Today sections
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          Split Today into two lanes: Now and Next.
+        </p>
+        <label htmlFor="today-now-next" className="flex items-center gap-2 text-sm">
+          <input
+            id="today-now-next"
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => {
+              void setEnabled(e.target.checked)
+            }}
+            className="size-4 rounded border-border"
+          />
+          <span>Enable Now/Next in Today</span>
+        </label>
       </div>
 
       {/* Theme toggle — future */}

@@ -7,8 +7,56 @@ import { useDroppable } from "@dnd-kit/core"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useSessionStore } from "@/stores/useSessionStore"
-import { encodeSectionDroppableId } from "@/lib/dnd-types"
+import { useTodaySectionsStore } from "@/stores/useTodaySectionsStore"
+import { encodeSectionDroppableId, encodeTodayLaneDroppableId } from "@/lib/dnd-types"
 import { cn } from "@/lib/utils"
+import type { LocalTask } from "@/types/local"
+import type { TodayLane } from "@/lib/dnd-types"
+
+interface TodayLaneListProps {
+  lane: TodayLane
+  title: string
+  tasks: LocalTask[]
+  todayDropBucketId: string
+  bucketNameMap: Map<string, string>
+}
+
+function TodayLaneList({ lane, title, tasks, todayDropBucketId, bucketNameMap }: TodayLaneListProps) {
+  const laneIds = tasks.map((t) => t.id)
+  const { setNodeRef, isOver } = useDroppable({
+    id: encodeTodayLaneDroppableId(lane, todayDropBucketId),
+    data: { type: "today-lane", lane, section: "today", bucketId: todayDropBucketId },
+  })
+
+  return (
+    <section
+      ref={setNodeRef}
+      className={cn("min-h-[120px] rounded-lg border border-border/60 bg-background/80 transition-colors", isOver && "bg-primary/5 ring-1 ring-primary/20")}
+    >
+      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h2>
+        <span className="text-xs text-muted-foreground">{tasks.length}</span>
+      </div>
+      <SortableContext items={laneIds} strategy={verticalListSortingStrategy}>
+        {tasks.length > 0 ? (
+          <div className="divide-y divide-border/40">
+            {tasks.map((task) => (
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                showBucket
+                bucketName={task.bucket_id ? bucketNameMap.get(task.bucket_id) : undefined}
+                orderedIds={laneIds}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="px-3 py-4 text-sm text-muted-foreground">Drop tasks here</p>
+        )}
+      </SortableContext>
+    </section>
+  )
+}
 
 /**
  * Global "Today" smart list.
@@ -21,18 +69,23 @@ export function TodayPage() {
   const { selectedTaskId, clearSelection } = useTaskStore()
   const { buckets } = useBucketStore()
   const { isRunning, startSession, stopSession } = useSessionStore()
+  const splitTodaySections = useTodaySectionsStore((s) => s.enabled)
+  const getTaskLane = useTodaySectionsStore((s) => s.getTaskLane)
 
   const todayTasks = tasks.filter((t) => t.section === "today").sort((a, b) => a.position - b.position)
   const todayIds = todayTasks.map((t) => t.id)
+  const nowTasks = todayTasks.filter((t) => getTaskLane(t.id) === "now")
+  const nextTasks = todayTasks.filter((t) => getTaskLane(t.id) === "next")
   const defaultBucket = buckets.find((b) => b.is_default)
+  const todayDropBucketId = defaultBucket?.id ?? buckets[0]?.id ?? "global"
 
   // Build a quick bucket name lookup for showing bucket labels on each task
   const bucketNameMap = new Map(buckets.map((b) => [b.id, b.name]))
 
   // Make the today list area a droppable for inbox items
   const { setNodeRef: dropRef, isOver } = useDroppable({
-    id: encodeSectionDroppableId("today", defaultBucket?.id ?? "global"),
-    data: { type: "section", section: "today", bucketId: defaultBucket?.id },
+    id: encodeSectionDroppableId("today", todayDropBucketId),
+    data: { type: "section", section: "today", bucketId: todayDropBucketId },
   })
 
   // Click on page background (not on a task card) clears selection
@@ -85,19 +138,38 @@ export function TodayPage() {
       {/* Sortable task list — droppable area fills remaining space for reliable DnD */}
       <div ref={dropRef} className={cn("min-h-[200px] flex-1 rounded-lg transition-colors", isOver && "bg-primary/5 ring-1 ring-primary/20")}>
         {todayTasks.length > 0 ? (
-          <SortableContext items={todayIds} strategy={verticalListSortingStrategy}>
-            <div className="divide-y divide-border/50">
-              {todayTasks.map((task) => (
-                <SortableTaskCard
-                  key={task.id}
-                  task={task}
-                  showBucket
-                  bucketName={task.bucket_id ? bucketNameMap.get(task.bucket_id) : undefined}
-                  orderedIds={todayIds}
-                />
-              ))}
+          splitTodaySections ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <TodayLaneList
+                lane="now"
+                title="Now"
+                tasks={nowTasks}
+                todayDropBucketId={todayDropBucketId}
+                bucketNameMap={bucketNameMap}
+              />
+              <TodayLaneList
+                lane="next"
+                title="Next"
+                tasks={nextTasks}
+                todayDropBucketId={todayDropBucketId}
+                bucketNameMap={bucketNameMap}
+              />
             </div>
-          </SortableContext>
+          ) : (
+            <SortableContext items={todayIds} strategy={verticalListSortingStrategy}>
+              <div className="divide-y divide-border/50">
+                {todayTasks.map((task) => (
+                  <SortableTaskCard
+                    key={task.id}
+                    task={task}
+                    showBucket
+                    bucketName={task.bucket_id ? bucketNameMap.get(task.bucket_id) : undefined}
+                    orderedIds={todayIds}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          )
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-center">
             <Sun className="mb-4 size-12 text-muted-foreground/30" />

@@ -276,6 +276,8 @@ export async function getOrCreateDeviceId(): Promise<string> {
     currentView: "today",
     deviceId,
     rightRailPanel: null,
+    todaySectionsEnabled: false,
+    todayLaneByTaskId: {},
   })
 
   return deviceId

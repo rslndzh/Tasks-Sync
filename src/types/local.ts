@@ -122,4 +122,8 @@ export interface AppState {
   deviceId: string
   /** Active right-rail panel: "calendar" | connectionId | null (collapsed) */
   rightRailPanel: string | null
+  /** Optional Today split-list feature toggle */
+  todaySectionsEnabled?: boolean
+  /** Local lane assignment for Today tasks when split mode is enabled */
+  todayLaneByTaskId?: Record<string, "now" | "next">
 }
