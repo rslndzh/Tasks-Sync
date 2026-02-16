@@ -1,11 +1,13 @@
+import { useState } from "react"
 import { Link, Outlet, useLocation } from "react-router-dom"
 import { Separator } from "@/components/ui/separator"
-import { AlertCircle, CheckCircle2, Cloud, FolderClosed, FolderOpen, Inbox, Loader2, RefreshCw, Settings, Sun } from "lucide-react"
+import { AlertCircle, CheckCircle2, Cloud, FolderClosed, FolderOpen, Inbox, Layers, Loader2, RefreshCw, Settings, Sun } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { useSyncStore } from "@/stores/useSyncStore"
+import { useConnectionStore } from "@/stores/useConnectionStore"
 import { syncNow } from "@/lib/sync"
 import { CreateBucketDialog } from "@/components/CreateBucketDialog"
 import { ShortcutHelp } from "@/components/ShortcutHelp"
@@ -13,6 +15,7 @@ import { SettingsDialog } from "@/components/SettingsDialog"
 import { MiniTimer } from "@/components/MiniTimer"
 import { RightRail } from "@/components/RightRail"
 import { BottomNav } from "@/components/BottomNav"
+import { MobileIntegrationsSheet } from "@/components/MobileIntegrationsSheet"
 import { OfflineBanner } from "@/components/OfflineBanner"
 import { DndProvider } from "@/components/DndProvider"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
@@ -145,10 +148,12 @@ export function Layout() {
   const location = useLocation()
   const { buckets } = useBucketStore()
   const tasks = useTaskStore((s) => s.tasks)
+  const triageCount = useConnectionStore((s) => s.getTotalInboxCount())
   const user = useAuthStore((s) => s.user)
   const syncStatus = useSyncStore((s) => s.status)
   const syncError = useSyncStore((s) => s.error)
   const todayCount = tasks.filter((t) => t.section === "today").length
+  const [integrationsOpen, setIntegrationsOpen] = useState(false)
 
   // Initialize global keyboard shortcuts, timer restore, integration sync, Supabase sync
   useKeyboardShortcuts()
@@ -290,6 +295,23 @@ export function Layout() {
             <Settings className="size-4" />
             Settings
           </button>
+
+          {/* Mid-size fallback: Right rail is hidden on md, so expose triage here */}
+          <button
+            type="button"
+            onClick={() => setIntegrationsOpen(true)}
+            className="mb-2 flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
+          >
+            <span className="flex items-center gap-2">
+              <Layers className="size-4" />
+              Triage Inbox
+            </span>
+            {triageCount > 0 && (
+              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary">
+                {triageCount > 99 ? "99+" : triageCount}
+              </span>
+            )}
+          </button>
         </nav>
       </aside>
 
@@ -307,6 +329,7 @@ export function Layout() {
       {/* Global overlays */}
       <ShortcutHelp />
       <SettingsDialog />
+      <MobileIntegrationsSheet open={integrationsOpen} onOpenChange={setIntegrationsOpen} />
       </div>
 
       {/* Mobile bottom navigation */}
