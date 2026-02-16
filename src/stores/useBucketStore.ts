@@ -27,8 +27,14 @@ export const useBucketStore = create<BucketState>((set, get) => ({
   isLoaded: false,
 
   loadBuckets: async () => {
+    const queuedMutations: Array<{
+      table: "buckets" | "tasks"
+      operation: "insert" | "update" | "delete"
+      payload: Record<string, unknown>
+    }> = []
+
     // Use transaction to prevent race condition (React StrictMode double-effect)
-    const buckets = await db.transaction("rw", db.buckets, async () => {
+    const buckets = await db.transaction("rw", [db.buckets, db.tasks], async () => {
       const existing = await db.buckets.orderBy("position").toArray()
 
       // If no buckets exist (first launch / dev mode), create default Inbox
@@ -45,7 +51,7 @@ export const useBucketStore = create<BucketState>((set, get) => ({
           updated_at: new Date().toISOString(),
         }
         await db.buckets.put(inbox)
-        void queueSync("buckets", "insert", { ...inbox })
+        queuedMutations.push({ table: "buckets", operation: "insert", payload: { ...inbox } })
         return [inbox]
       }
 
@@ -63,10 +69,14 @@ export const useBucketStore = create<BucketState>((set, get) => ({
           const orphaned = await db.tasks.where("bucket_id").equals(dupe.id).toArray()
           for (const t of orphaned) {
             await db.tasks.update(t.id, { bucket_id: keeper.id })
-            void queueSync("tasks", "update", { id: t.id, bucket_id: keeper.id })
+            queuedMutations.push({
+              table: "tasks",
+              operation: "update",
+              payload: { id: t.id, bucket_id: keeper.id },
+            })
           }
           await db.buckets.delete(dupe.id)
-          void queueSync("buckets", "delete", { id: dupe.id })
+          queuedMutations.push({ table: "buckets", operation: "delete", payload: { id: dupe.id } })
         }
 
         return existing.filter((b) => !dupes.some((d) => d.id === b.id))
@@ -76,6 +86,10 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     })
 
     set({ buckets, isLoaded: true })
+
+    for (const mutation of queuedMutations) {
+      void queueSync(mutation.table, mutation.operation, mutation.payload)
+    }
   },
 
   addBucket: async (name, icon, color) => {
