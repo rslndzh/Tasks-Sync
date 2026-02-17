@@ -16,6 +16,7 @@ interface TaskCardProps {
   trackedSeconds?: number
   isSelected?: boolean
   isMultiSelected?: boolean
+  dimmed?: boolean
   onSelect?: () => void
 }
 
@@ -26,10 +27,18 @@ export function TaskCard({
   trackedSeconds = 0,
   isSelected,
   isMultiSelected,
+  dimmed = false,
   onSelect,
 }: TaskCardProps) {
   const { completeTask, archiveTask, updateTask } = useTaskStore()
-  const { isRunning, startSession, switchTask, activeTaskId: sessionTaskId, elapsedSeconds } = useSessionStore()
+  const isRunning = useSessionStore((s) => s.isRunning)
+  const startSession = useSessionStore((s) => s.startSession)
+  const switchTask = useSessionStore((s) => s.switchTask)
+  const sessionTaskId = useSessionStore((s) => s.activeTaskId)
+  const liveTrackedSeconds = useSessionStore((s) => {
+    if (!s.isRunning || s.activeTaskId !== task.id || !s.activeTimeEntry?.started_at) return 0
+    return Math.max(0, Math.floor((Date.now() - new Date(s.activeTimeEntry.started_at).getTime()) / 1000))
+  })
   const isActiveInSession = isRunning && sessionTaskId === task.id
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(task.title)
@@ -58,7 +67,7 @@ export function TaskCard({
     }
   }
 
-  const totalTracked = trackedSeconds + (isActiveInSession ? elapsedSeconds : 0)
+  const totalTracked = trackedSeconds + liveTrackedSeconds
   const hasEstimate = task.estimate_minutes != null && task.estimate_minutes > 0
   const hasTracked = totalTracked > 0
   const showTimeInfo = hasTracked
@@ -76,6 +85,7 @@ export function TaskCard({
         "hover:bg-accent/50",
         (isSelected || isMultiSelected) && "bg-accent/60",
         isActiveInSession && !isSelected && !isMultiSelected && "bg-primary/[0.06]",
+        dimmed && !isSelected && !isMultiSelected && "opacity-75",
       )}
     >
 

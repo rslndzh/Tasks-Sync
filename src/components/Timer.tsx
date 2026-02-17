@@ -1,5 +1,4 @@
-import { useSessionStore } from "@/stores/useSessionStore"
-import { useTaskStore } from "@/stores/useTaskStore"
+import { useActiveTimerModel } from "@/hooks/useActiveTimerModel"
 import { useBucketStore } from "@/stores/useBucketStore"
 
 /**
@@ -20,20 +19,14 @@ export function formatTime(seconds: number): string {
  * Timer display component — shows elapsed time, current task, and bucket.
  */
 export function TimerDisplay() {
-  const { elapsedSeconds, timerMode, fixedDurationMinutes } = useSessionStore()
-  const activeTaskId = useSessionStore((s) => s.activeTaskId)
-  const task = useTaskStore((s) => s.tasks.find((t) => t.id === activeTaskId))
+  const timer = useActiveTimerModel()
+  const task = timer.task
   const bucket = useBucketStore((s) => s.getBucket(task?.bucket_id ?? ""))
-
-  const displayTime =
-    timerMode === "fixed" && fixedDurationMinutes
-      ? Math.max(0, fixedDurationMinutes * 60 - elapsedSeconds)
-      : elapsedSeconds
 
   return (
     <div className="flex flex-col items-center">
       <span className="text-4xl font-mono font-bold tabular-nums tracking-wider">
-        {formatTime(displayTime)}
+        {formatTime(timer.sessionDisplaySeconds)}
       </span>
       {task && (
         <p className="mt-1 text-sm text-muted-foreground truncate max-w-[200px]">

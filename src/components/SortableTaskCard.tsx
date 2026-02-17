@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { TaskCard } from "@/components/TaskCard"
 import { TaskContextMenu } from "@/components/TaskContextMenu"
 import { useTaskStore } from "@/stores/useTaskStore"
+import { useSessionStore } from "@/stores/useSessionStore"
 import { useTrackedTimeMap } from "@/hooks/useTrackedTime"
 import type { LocalTask } from "@/types/local"
 import type { DragData } from "@/lib/dnd-types"
@@ -14,6 +15,8 @@ interface SortableTaskCardProps {
   /** Show bucket name tag (used in Today view) */
   showBucket?: boolean
   bucketName?: string
+  /** When true and a timer is running, non-active tasks are dimmed */
+  focusMode?: boolean
   /** Ordered list of task IDs for shift-click range selection */
   orderedIds: string[]
 }
@@ -23,8 +26,9 @@ interface SortableTaskCardProps {
  * Handles drag transforms, click-to-open behavior, selection modifiers,
  * and carries DragData for the global DndProvider.
  */
-export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: SortableTaskCardProps) {
+export function SortableTaskCard({ task, showBucket, bucketName, focusMode = false, orderedIds }: SortableTaskCardProps) {
   const { selectedTaskId, selectedTaskIds, toggleSelectTask, selectRange, setSelectedTask, setHoveredTask } = useTaskStore()
+  const dimmed = useSessionStore((s) => focusMode && s.isRunning && s.activeTaskId !== task.id)
   const navigate = useNavigate()
   const location = useLocation()
   const trackedMap = useTrackedTimeMap()
@@ -102,6 +106,7 @@ export function SortableTaskCard({ task, showBucket, bucketName, orderedIds }: S
           trackedSeconds={trackedMap.get(task.id) ?? 0}
           isSelected={isFocused}
           isMultiSelected={isMultiSelected}
+          dimmed={dimmed}
         />
       </div>
     </TaskContextMenu>

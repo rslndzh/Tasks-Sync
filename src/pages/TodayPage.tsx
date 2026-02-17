@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SortableTaskCard } from "@/components/SortableTaskCard"
-import { Sun, Play, Square, ChevronRight } from "lucide-react"
+import { Sun, Play, ChevronRight } from "lucide-react"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useDroppable } from "@dnd-kit/core"
 import { useTaskStore } from "@/stores/useTaskStore"
@@ -10,6 +10,8 @@ import { useSessionStore } from "@/stores/useSessionStore"
 import { useTodaySectionsStore } from "@/stores/useTodaySectionsStore"
 import { encodeSectionDroppableId, encodeTodayLaneDroppableId } from "@/lib/dnd-types"
 import { cn } from "@/lib/utils"
+import { formatTime } from "@/components/Timer"
+import { useActiveTimerModel } from "@/hooks/useActiveTimerModel"
 import type { LocalTask } from "@/types/local"
 import type { TodayLane } from "@/lib/dnd-types"
 
@@ -69,6 +71,7 @@ function TodayLaneList({ lane, title, tasks, todayDropBucketId, bucketNameMap }:
                     task={task}
                     showBucket
                     bucketName={task.bucket_id ? bucketNameMap.get(task.bucket_id) : undefined}
+                    focusMode
                     orderedIds={laneIds}
                   />
                 ))}
@@ -95,14 +98,23 @@ export function TodayPage() {
   const tasks = useTaskStore((s) => s.tasks)
   const { selectedTaskId, clearSelection } = useTaskStore()
   const { buckets } = useBucketStore()
-  const { isRunning, startSession, stopSession } = useSessionStore()
+  const { isRunning, startSession } = useSessionStore()
   const splitTodaySections = useTodaySectionsStore((s) => s.enabled)
   const getTaskLane = useTodaySectionsStore((s) => s.getTaskLane)
+  const setTaskLane = useTodaySectionsStore((s) => s.setTaskLane)
+  const timer = useActiveTimerModel()
 
   const todayTasks = tasks.filter((t) => t.section === "today").sort((a, b) => a.position - b.position)
   const todayIds = todayTasks.map((t) => t.id)
   const nowTasks = todayTasks.filter((t) => getTaskLane(t.id) === "now")
   const nextTasks = todayTasks.filter((t) => getTaskLane(t.id) === "next")
+  const plannedEstimateSeconds = useMemo(() => (
+    todayTasks.reduce((sum, task) => {
+      const estimateMinutes = task.estimate_minutes ?? 0
+      return estimateMinutes > 0 ? sum + estimateMinutes * 60 : sum
+    }, 0)
+  ), [todayTasks])
+  const suggestedFocusTaskId = selectedTaskId ?? nowTasks[0]?.id ?? nextTasks[0]?.id ?? todayTasks[0]?.id ?? null
   const defaultBucket = buckets.find((b) => b.is_default)
   const todayDropBucketId = defaultBucket?.id ?? buckets[0]?.id ?? "global"
 
@@ -137,22 +149,21 @@ export function TodayPage() {
           </div>
         </div>
         {isRunning ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void stopSession()}
-            className="gap-1"
-          >
-            <Square className="size-4" />
-            Stop
-          </Button>
+          <div className="hidden items-center gap-2 rounded-full border border-border/70 bg-muted/30 px-3 py-1 text-xs text-muted-foreground md:flex">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-primary" />
+            </span>
+            <span className="font-semibold text-foreground">Focusing</span>
+            <span className="font-mono tabular-nums">{formatTime(timer.sessionDisplaySeconds)}</span>
+          </div>
         ) : (
           <Button
             variant="outline"
             size="sm"
-            disabled={!selectedTaskId}
+            disabled={!suggestedFocusTaskId}
             onClick={() => {
-              if (selectedTaskId) void startSession(selectedTaskId)
+              if (suggestedFocusTaskId) void startSession(suggestedFocusTaskId)
             }}
             className="gap-1"
           >
@@ -161,6 +172,39 @@ export function TodayPage() {
           </Button>
         )}
       </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+          Now {nowTasks.length}
+        </span>
+        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+          Next {nextTasks.length}
+        </span>
+        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+          Planned {plannedEstimateSeconds > 0 ? formatTime(plannedEstimateSeconds) : "No estimate"}
+        </span>
+        {isRunning && timer.task && (
+          <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary">
+            {timer.estimateSeconds != null
+              ? `${formatTime(timer.activeTaskTrackedSeconds)} / ${formatTime(timer.estimateSeconds)}`
+              : `${formatTime(timer.activeTaskTrackedSeconds)} tracked`}
+          </span>
+        )}
+      </div>
+
+      {splitTodaySections && nowTasks.length === 0 && nextTasks.length > 0 && (
+        <div className="mb-2 flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+          <p className="text-xs text-muted-foreground">Now is empty. Pull one task forward and start with momentum.</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => void setTaskLane(nextTasks[0].id, "now")}
+          >
+            Pick Next
+          </Button>
+        </div>
+      )}
 
       {/* Sortable task list — droppable area fills remaining space for reliable DnD */}
       <div ref={dropRef} className={cn("min-h-[200px] flex-1 rounded-lg transition-colors", isOver && "bg-primary/5 ring-1 ring-primary/20")}>
@@ -191,6 +235,7 @@ export function TodayPage() {
                     task={task}
                     showBucket
                     bucketName={task.bucket_id ? bucketNameMap.get(task.bucket_id) : undefined}
+                    focusMode
                     orderedIds={todayIds}
                   />
                 ))}
