@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ESTIMATE_DIALOG_EVENT } from "@/lib/estimate-dialog"
+import { cn } from "@/lib/utils"
 import { useTaskStore } from "@/stores/useTaskStore"
 
 const PRESET_MINUTES = [15, 25, 45, 60, 90]
@@ -34,6 +35,7 @@ export function EstimateDialog() {
     return new Set(targetTasks.map((task) => task.estimate_minutes ?? null))
   }, [targetTasks])
   const hasMixedValues = estimates.size > 1
+  const selectedPreset = Number.parseInt(minutesInput, 10)
 
   useEffect(() => {
     function handleOpen(event: Event) {
@@ -75,16 +77,16 @@ export function EstimateDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set estimate</DialogTitle>
+          <DialogTitle>Estimate</DialogTitle>
           <DialogDescription>
             {targetTaskIds.length === 1
               ? "Set expected effort in minutes for this task."
-              : `Set expected effort for ${targetTaskIds.length} tasks.`}
+              : `Set expected effort for ${targetTaskIds.length} tasks.`} Press Enter to save.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-muted/25 px-3 py-2">
             <Input
               type="number"
               min={0}
@@ -98,18 +100,22 @@ export function EstimateDialog() {
                   void applyEstimate()
                 }
               }}
+              className="h-9 border-border/60 bg-background/70"
             />
-            <span className="text-xs text-muted-foreground">min</span>
+            <span className="text-xs font-medium text-muted-foreground">min</span>
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {PRESET_MINUTES.map((minutes) => (
               <Button
                 key={minutes}
                 type="button"
-                variant="secondary"
+                variant={selectedPreset === minutes ? "default" : "secondary"}
                 size="sm"
-                className="h-7 text-xs"
+                className={cn(
+                  "h-8 rounded-full px-3 text-xs",
+                  selectedPreset === minutes && "bg-primary text-primary-foreground",
+                )}
                 onClick={() => setMinutesInput(String(minutes))}
               >
                 {minutes}m
@@ -119,7 +125,7 @@ export function EstimateDialog() {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 text-xs"
+              className="h-8 rounded-full px-3 text-xs"
               onClick={() => setMinutesInput("")}
             >
               Clear
