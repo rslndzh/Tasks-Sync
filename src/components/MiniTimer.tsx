@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button"
-import { Square } from "lucide-react"
+import { CircleStop } from "lucide-react"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useActiveTimerModel } from "@/hooks/useActiveTimerModel"
 import { cn } from "@/lib/utils"
-import { formatTime } from "@/components/Timer"
+import { formatReadableDuration, formatTime } from "@/components/Timer"
 
 /**
  * Mini timer bar — sits at the bottom of the main content column (before the right rail).
@@ -42,7 +42,7 @@ export function MiniTimer() {
             onClick={() => void stopSession()}
             className="gap-1"
           >
-            <Square className="size-3" />
+            <CircleStop className="size-3.5" />
             Stop
           </Button>
         </div>
@@ -50,16 +50,24 @@ export function MiniTimer() {
         <div className="mt-1 flex items-center gap-2 pl-5 text-xs text-muted-foreground">
           {timer.estimateSeconds != null ? (
             <>
-              <span className="font-mono tabular-nums">
-                {formatTime(timer.activeTaskTrackedSeconds)} / {formatTime(timer.estimateSeconds)}
-              </span>
               <span>
-                {timer.remainingEstimateSeconds && timer.remainingEstimateSeconds > 0
-                  ? `${formatTime(timer.remainingEstimateSeconds)} left`
-                  : (timer.overrunEstimateSeconds ?? 0) > 0
-                    ? `+${formatTime(timer.overrunEstimateSeconds ?? 0)} over`
-                    : "On estimate"}
+                {formatReadableDuration(timer.activeTaskTrackedSeconds)} / {formatReadableDuration(timer.estimateSeconds)}
               </span>
+              {(timer.remainingEstimateSeconds ?? 0) > 0 && (
+                <span>
+                  {formatReadableDuration(timer.remainingEstimateSeconds ?? 0)}
+                </span>
+              )}
+              {(timer.overrunEstimateSeconds ?? 0) > 0 && (
+                <span>
+                  +{formatReadableDuration(timer.overrunEstimateSeconds ?? 0)}
+                </span>
+              )}
+              {(timer.remainingEstimateSeconds ?? 0) === 0 && (timer.overrunEstimateSeconds ?? 0) === 0 && (
+                <span>
+                  On estimate
+                </span>
+              )}
             </>
           ) : (
             <span>No estimate. Press E to set one.</span>

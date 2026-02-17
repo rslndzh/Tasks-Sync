@@ -12,6 +12,7 @@ import { syncNow } from "@/lib/sync"
 import { CreateBucketDialog } from "@/components/CreateBucketDialog"
 import { ShortcutHelp } from "@/components/ShortcutHelp"
 import { SettingsDialog } from "@/components/SettingsDialog"
+import { EstimateDialog } from "@/components/EstimateDialog"
 import { MiniTimer } from "@/components/MiniTimer"
 import { RightRail } from "@/components/RightRail"
 import { BottomNav } from "@/components/BottomNav"
@@ -329,6 +330,7 @@ export function Layout() {
       {/* Global overlays */}
       <ShortcutHelp />
       <SettingsDialog />
+      <EstimateDialog />
       <MobileIntegrationsSheet open={integrationsOpen} onOpenChange={setIntegrationsOpen} />
       </div>
 

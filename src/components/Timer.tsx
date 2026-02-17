@@ -16,6 +16,20 @@ export function formatTime(seconds: number): string {
 }
 
 /**
+ * Human-readable duration: 45s, 5m 20s, 2h 15m.
+ */
+export function formatReadableDuration(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds))
+  const h = Math.floor(safe / 3600)
+  const m = Math.floor((safe % 3600) / 60)
+  const s = safe % 60
+
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`
+  return `${s}s`
+}
+
+/**
  * Timer display component — shows elapsed time, current task, and bucket.
  */
 export function TimerDisplay() {

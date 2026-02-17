@@ -8,9 +8,10 @@ import { useTaskStore } from "@/stores/useTaskStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useTodaySectionsStore } from "@/stores/useTodaySectionsStore"
+import { useTrackedTimeMap } from "@/hooks/useTrackedTime"
 import { encodeSectionDroppableId, encodeTodayLaneDroppableId } from "@/lib/dnd-types"
 import { cn } from "@/lib/utils"
-import { formatTime } from "@/components/Timer"
+import { formatReadableDuration } from "@/components/Timer"
 import { useActiveTimerModel } from "@/hooks/useActiveTimerModel"
 import type { LocalTask } from "@/types/local"
 import type { TodayLane } from "@/lib/dnd-types"
@@ -19,11 +20,23 @@ interface TodayLaneListProps {
   lane: TodayLane
   title: string
   tasks: LocalTask[]
+  spentSeconds: number
+  estimateSeconds: number
   todayDropBucketId: string
   bucketNameMap: Map<string, string>
+  promoteFromNext?: () => void
 }
 
-function TodayLaneList({ lane, title, tasks, todayDropBucketId, bucketNameMap }: TodayLaneListProps) {
+function TodayLaneList({
+  lane,
+  title,
+  tasks,
+  spentSeconds,
+  estimateSeconds,
+  todayDropBucketId,
+  bucketNameMap,
+  promoteFromNext,
+}: TodayLaneListProps) {
   const [collapsed, setCollapsed] = useState(false)
   const laneIds = tasks.map((t) => t.id)
   const { setNodeRef, isOver } = useDroppable({
@@ -58,6 +71,13 @@ function TodayLaneList({ lane, title, tasks, todayDropBucketId, bucketNameMap }:
             {tasks.length}
           </span>
         )}
+
+        {(spentSeconds > 0 || estimateSeconds > 0) && (
+          <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {spentSeconds > 0 ? formatReadableDuration(spentSeconds) : "0s"}
+            {estimateSeconds > 0 ? ` / ${formatReadableDuration(estimateSeconds)}` : ""}
+          </span>
+        )}
       </div>
 
       {!collapsed && (
@@ -77,9 +97,21 @@ function TodayLaneList({ lane, title, tasks, todayDropBucketId, bucketNameMap }:
                 ))}
               </div>
             ) : (
-              <p className="px-3 py-2 text-xs italic text-muted-foreground/40">
-                Drop tasks here
-              </p>
+              <div className="flex items-center justify-between px-3 py-2">
+                <p className="text-xs italic text-muted-foreground/40">
+                  Drop tasks here
+                </p>
+                {lane === "now" && promoteFromNext && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => promoteFromNext()}
+                  >
+                    Pull from Next
+                  </Button>
+                )}
+              </div>
             )}
           </SortableContext>
         </div>
@@ -102,19 +134,34 @@ export function TodayPage() {
   const splitTodaySections = useTodaySectionsStore((s) => s.enabled)
   const getTaskLane = useTodaySectionsStore((s) => s.getTaskLane)
   const setTaskLane = useTodaySectionsStore((s) => s.setTaskLane)
+  const trackedMap = useTrackedTimeMap()
   const timer = useActiveTimerModel()
 
   const todayTasks = tasks.filter((t) => t.section === "today").sort((a, b) => a.position - b.position)
   const todayIds = todayTasks.map((t) => t.id)
   const nowTasks = todayTasks.filter((t) => getTaskLane(t.id) === "now")
   const nextTasks = todayTasks.filter((t) => getTaskLane(t.id) === "next")
-  const plannedEstimateSeconds = useMemo(() => (
-    todayTasks.reduce((sum, task) => {
-      const estimateMinutes = task.estimate_minutes ?? 0
-      return estimateMinutes > 0 ? sum + estimateMinutes * 60 : sum
-    }, 0)
-  ), [todayTasks])
   const suggestedFocusTaskId = selectedTaskId ?? nowTasks[0]?.id ?? nextTasks[0]?.id ?? todayTasks[0]?.id ?? null
+  const activeTaskId = timer.task?.id ?? null
+  const laneStats = useMemo(() => {
+    const calc = (laneTasks: LocalTask[]) => {
+      const laneIds = new Set(laneTasks.map((task) => task.id))
+      const spentBase = laneTasks.reduce((sum, task) => sum + (trackedMap.get(task.id) ?? 0), 0)
+      const estimate = laneTasks.reduce((sum, task) => {
+        const minutes = task.estimate_minutes ?? 0
+        return minutes > 0 ? sum + minutes * 60 : sum
+      }, 0)
+      const live = activeTaskId && laneIds.has(activeTaskId) ? timer.activeEntryElapsedSeconds : 0
+      return {
+        spentSeconds: spentBase + live,
+        estimateSeconds: estimate,
+      }
+    }
+    return {
+      now: calc(nowTasks),
+      next: calc(nextTasks),
+    }
+  }, [trackedMap, nowTasks, nextTasks, activeTaskId, timer.activeEntryElapsedSeconds])
   const defaultBucket = buckets.find((b) => b.is_default)
   const todayDropBucketId = defaultBucket?.id ?? buckets[0]?.id ?? "global"
 
@@ -155,7 +202,7 @@ export function TodayPage() {
               <span className="relative inline-flex size-2 rounded-full bg-primary" />
             </span>
             <span className="font-semibold text-foreground">Focusing</span>
-            <span className="font-mono tabular-nums">{formatTime(timer.sessionDisplaySeconds)}</span>
+            <span>{formatReadableDuration(timer.sessionDisplaySeconds)}</span>
           </div>
         ) : (
           <Button
@@ -173,39 +220,6 @@ export function TodayPage() {
         )}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
-          Now {nowTasks.length}
-        </span>
-        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
-          Next {nextTasks.length}
-        </span>
-        <span className="rounded-full border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
-          Planned {plannedEstimateSeconds > 0 ? formatTime(plannedEstimateSeconds) : "No estimate"}
-        </span>
-        {isRunning && timer.task && (
-          <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-1 text-xs text-primary">
-            {timer.estimateSeconds != null
-              ? `${formatTime(timer.activeTaskTrackedSeconds)} / ${formatTime(timer.estimateSeconds)}`
-              : `${formatTime(timer.activeTaskTrackedSeconds)} tracked`}
-          </span>
-        )}
-      </div>
-
-      {splitTodaySections && nowTasks.length === 0 && nextTasks.length > 0 && (
-        <div className="mb-2 flex items-center justify-between rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
-          <p className="text-xs text-muted-foreground">Now is empty. Pull one task forward and start with momentum.</p>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => void setTaskLane(nextTasks[0].id, "now")}
-          >
-            Pick Next
-          </Button>
-        </div>
-      )}
-
       {/* Sortable task list — droppable area fills remaining space for reliable DnD */}
       <div ref={dropRef} className={cn("min-h-[200px] flex-1 rounded-lg transition-colors", isOver && "bg-primary/5 ring-1 ring-primary/20")}>
         {todayTasks.length > 0 ? (
@@ -215,13 +229,18 @@ export function TodayPage() {
                 lane="now"
                 title="Now"
                 tasks={nowTasks}
+                spentSeconds={laneStats.now.spentSeconds}
+                estimateSeconds={laneStats.now.estimateSeconds}
                 todayDropBucketId={todayDropBucketId}
                 bucketNameMap={bucketNameMap}
+                promoteFromNext={nextTasks.length > 0 ? () => { void setTaskLane(nextTasks[0].id, "now") } : undefined}
               />
               <TodayLaneList
                 lane="next"
                 title="Next"
                 tasks={nextTasks}
+                spentSeconds={laneStats.next.spentSeconds}
+                estimateSeconds={laneStats.next.estimateSeconds}
                 todayDropBucketId={todayDropBucketId}
                 bucketNameMap={bucketNameMap}
               />
