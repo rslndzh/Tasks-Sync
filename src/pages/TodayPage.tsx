@@ -47,7 +47,7 @@ function TodayLaneList({
   return (
     <section
       ref={setNodeRef}
-      className={cn("rounded-xl border border-transparent py-1 transition-colors duration-150 ease-out", isOver && "border-primary/30 bg-primary/5")}
+      className={cn("rounded-lg py-1 transition-colors", isOver && "bg-primary/5")}
     >
       <div className="flex items-center gap-2 px-3 py-1.5">
         <button
@@ -72,10 +72,12 @@ function TodayLaneList({
           </span>
         )}
 
-        <span className="rounded-full border border-border/60 bg-muted/45 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-          {formatReadableDuration(spentSeconds)}
-          {estimateSeconds > 0 ? ` / ${formatReadableDuration(estimateSeconds)}` : " / —"}
-        </span>
+        {(spentSeconds > 0 || estimateSeconds > 0) && (
+          <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {spentSeconds > 0 ? formatReadableDuration(spentSeconds) : "0s"}
+            {estimateSeconds > 0 ? ` / ${formatReadableDuration(estimateSeconds)}` : ""}
+          </span>
+        )}
       </div>
 
       {!collapsed && (

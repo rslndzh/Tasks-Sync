@@ -14,8 +14,6 @@ interface ActiveTimerModel {
   remainingEstimateSeconds: number | null
   overrunEstimateSeconds: number | null
   estimateProgress: number | null
-  paceState: "none" | "on_pace" | "over"
-  paceDeltaSeconds: number | null
 }
 
 /**
@@ -59,14 +57,6 @@ export function useActiveTimerModel(): ActiveTimerModel {
   const estimateProgress = estimateSeconds != null
     ? Math.min(1, activeTaskTrackedSeconds / estimateSeconds)
     : null
-  const paceState: ActiveTimerModel["paceState"] = estimateSeconds == null
-    ? "none"
-    : (activeTaskTrackedSeconds > estimateSeconds ? "over" : "on_pace")
-  const paceDeltaSeconds = estimateSeconds == null
-    ? null
-    : (activeTaskTrackedSeconds > estimateSeconds
-      ? activeTaskTrackedSeconds - estimateSeconds
-      : Math.max(0, estimateSeconds - activeTaskTrackedSeconds))
 
   return {
     isRunning,
@@ -78,7 +68,5 @@ export function useActiveTimerModel(): ActiveTimerModel {
     remainingEstimateSeconds,
     overrunEstimateSeconds,
     estimateProgress,
-    paceState,
-    paceDeltaSeconds,
   }
 }

@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button"
 import { CircleStop } from "lucide-react"
-import { useLocation } from "react-router-dom"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useActiveTimerModel } from "@/hooks/useActiveTimerModel"
 import { cn } from "@/lib/utils"
@@ -13,10 +12,8 @@ import { formatReadableDuration, formatTime } from "@/components/Timer"
 export function MiniTimer() {
   const stopSession = useSessionStore((s) => s.stopSession)
   const timer = useActiveTimerModel()
-  const location = useLocation()
 
   if (!timer.isRunning) return null
-  if (location.pathname.startsWith("/task/")) return null
 
   return (
     <div className="mb-14 shrink-0 border-t border-border bg-background md:mb-0">
@@ -56,16 +53,21 @@ export function MiniTimer() {
               <span>
                 {formatReadableDuration(timer.activeTaskTrackedSeconds)} / {formatReadableDuration(timer.estimateSeconds)}
               </span>
-              <span
-                className={cn(
-                  "font-medium",
-                  timer.paceState === "over" && "text-amber-500",
-                )}
-              >
-                {timer.paceState === "over"
-                  ? `+${formatReadableDuration(timer.paceDeltaSeconds ?? 0)} over`
-                  : "On pace"}
-              </span>
+              {(timer.remainingEstimateSeconds ?? 0) > 0 && (
+                <span>
+                  {formatReadableDuration(timer.remainingEstimateSeconds ?? 0)}
+                </span>
+              )}
+              {(timer.overrunEstimateSeconds ?? 0) > 0 && (
+                <span>
+                  +{formatReadableDuration(timer.overrunEstimateSeconds ?? 0)}
+                </span>
+              )}
+              {(timer.remainingEstimateSeconds ?? 0) === 0 && (timer.overrunEstimateSeconds ?? 0) === 0 && (
+                <span>
+                  On estimate
+                </span>
+              )}
             </>
           ) : (
             <span>No estimate. Press E to set one.</span>
