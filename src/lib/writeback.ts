@@ -8,7 +8,7 @@
  */
 import { db } from "@/lib/db"
 import { closeTodoistTask, reopenTodoistTask } from "@/integrations/todoist"
-import { updateLinearIssueState } from "@/integrations/linear"
+import { fetchIssueTeamId, updateLinearIssueState } from "@/integrations/linear"
 import { closeAttioTask, reopenAttioTask } from "@/integrations/attio"
 import type { LocalTask, IntegrationConnection } from "@/types/local"
 
@@ -46,7 +46,7 @@ export async function writebackCompletion(
         break
 
       case "linear": {
-        const stateId = resolveLinearStateId(conn, task, completed)
+        const stateId = await resolveLinearStateId(conn, task, completed)
         if (!stateId) {
           // No cached state — skip writeback, sync the connection first to populate states
           return { ok: true }
@@ -88,15 +88,14 @@ async function resolveConnection(task: LocalTask): Promise<IntegrationConnection
  * Resolve the Linear workflow state ID for completing or reopening an issue.
  * Uses cached teamDoneStates / teamStartedStates from connection metadata.
  */
-function resolveLinearStateId(
+async function resolveLinearStateId(
   conn: IntegrationConnection,
   task: LocalTask,
   completed: boolean,
-): string | undefined {
-  const metadata = task.source_id
-    ? (conn.metadata as Record<string, unknown>)
-    : undefined
-  if (!metadata) return undefined
+): Promise<string | undefined> {
+  if (!task.source_id) return undefined
+
+  const metadata = conn.metadata as Record<string, unknown>
 
   // teamDoneStates: { [teamId]: stateId } — cached during sync
   const stateMap = completed
@@ -104,8 +103,33 @@ function resolveLinearStateId(
     : (metadata.teamStartedStates as Record<string, string> | undefined)
   if (!stateMap) return undefined
 
-  // Find the team this issue belongs to — stored in task metadata isn't available,
-  // so try all teams and return the first one (single-team is the common case)
+  const mapStateForTeam = (teamId?: string): string | undefined =>
+    teamId ? stateMap[teamId] : undefined
+
+  // Fast path: infer team from "[TEAM-123]" title prefix and cached team list.
+  const inferredTeamId = inferTaskTeamIdFromIdentifierPrefix(metadata, task.title)
+  const inferredState = mapStateForTeam(inferredTeamId)
+  if (inferredState) return inferredState
+
+  // Robust fallback: ask Linear for the issue's team ID, then use that team's state.
+  const exactTeamId = await fetchIssueTeamId(conn.apiKey, task.source_id)
+  const exactState = mapStateForTeam(exactTeamId)
+  if (exactState) return exactState
+
+  // Safe fallback for legacy single-team connections only.
   const teamIds = Object.keys(stateMap)
-  return teamIds.length > 0 ? stateMap[teamIds[0]] : undefined
+  return teamIds.length === 1 ? stateMap[teamIds[0]] : undefined
+}
+
+function inferTaskTeamIdFromIdentifierPrefix(
+  metadata: Record<string, unknown>,
+  taskTitle: string,
+): string | undefined {
+  const match = taskTitle.match(/^\[([A-Za-z0-9]+)-\d+\]/)
+  const teamKey = match?.[1]?.toUpperCase()
+  if (!teamKey) return undefined
+
+  const teams = metadata.teams as Array<{ id: string; key?: string }> | undefined
+  const team = teams?.find((t) => t.key?.toUpperCase() === teamKey)
+  return team?.id
 }

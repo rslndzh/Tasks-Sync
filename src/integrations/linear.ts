@@ -303,6 +303,29 @@ export async function updateLinearIssueState(
   )
 }
 
+/**
+ * Fetch the owning team ID for a specific issue.
+ * Used by writeback to avoid applying a state from the wrong team.
+ */
+export async function fetchIssueTeamId(
+  apiKey: string,
+  issueId: string,
+): Promise<string | undefined> {
+  const data = await linearQuery<{
+    issue: { team: { id: string } | null } | null
+  }>(
+    apiKey,
+    `query IssueTeam($issueId: String!) {
+      issue(id: $issueId) {
+        team { id }
+      }
+    }`,
+    { issueId },
+  )
+
+  return data.issue?.team?.id ?? undefined
+}
+
 // ============================================================================
 // Mapping
 // ============================================================================
