@@ -54,6 +54,22 @@ export function TiptapEditor({
   className,
 }: TiptapEditorProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestHtmlRef = useRef(content ?? "")
+  const lastEmittedRef = useRef(content ?? "")
+
+  const emitChange = useCallback((html: string) => {
+    if (html === lastEmittedRef.current) return
+    lastEmittedRef.current = html
+    onChange(html)
+  }, [onChange])
+
+  const flushPendingChange = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
+    emitChange(latestHtmlRef.current)
+  }, [emitChange])
 
   const editor = useEditor({
     extensions: [
@@ -107,10 +123,15 @@ export function TiptapEditor({
       },
     },
     onUpdate: ({ editor: ed }) => {
+      latestHtmlRef.current = ed.getHTML()
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
-        onChange(ed.getHTML())
+        debounceRef.current = null
+        emitChange(latestHtmlRef.current)
       }, 500)
+    },
+    onBlur: () => {
+      flushPendingChange()
     },
   })
 
@@ -120,15 +141,36 @@ export function TiptapEditor({
     const current = editor.getHTML()
     const incoming = content ?? ""
     if (incoming !== current && incoming !== "<p></p>") {
+      latestHtmlRef.current = incoming
+      lastEmittedRef.current = incoming
       editor.commands.setContent(incoming)
     }
   }, [content, editor])
 
+  // Flush pending note edits when the tab is hidden/reloaded.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingChange()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("beforeunload", flushPendingChange)
+    window.addEventListener("pagehide", flushPendingChange)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("beforeunload", flushPendingChange)
+      window.removeEventListener("pagehide", flushPendingChange)
+    }
+  }, [flushPendingChange])
+
   useEffect(() => {
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
+      flushPendingChange()
     }
-  }, [])
+  }, [flushPendingChange])
 
   const setLink = useCallback(() => {
     if (!editor) return
