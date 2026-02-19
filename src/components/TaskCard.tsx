@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Circle, Pencil, Play, Trash2 } from "lucide-react"
+import { Circle, File, Pencil, Play, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { PROVIDER_ICON_MAP } from "@/components/icons/ProviderIcons"
+import { hasTaskNotes } from "@/lib/task-notes"
 import type { LocalTask } from "@/types/local"
 
 interface TaskCardProps {
@@ -71,6 +72,7 @@ export function TaskCard({
   const hasEstimate = task.estimate_minutes != null && task.estimate_minutes > 0
   const hasTracked = totalTracked > 0
   const showTimeInfo = hasTracked
+  const hasNotes = hasTaskNotes(task.description)
 
   return (
     <div
@@ -121,6 +123,12 @@ export function TaskCard({
               return Icon ? <Icon className="size-4 flex-shrink-0" /> : null
             })()}
             <span className="truncate text-sm leading-tight">{task.title}</span>
+            {hasNotes && (
+              <File
+                className="size-3.5 flex-shrink-0 text-muted-foreground/45"
+                aria-label="Task has notes"
+              />
+            )}
             {hasEstimate && (
               <span className="rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
                 {fmt(task.estimate_minutes! * 60)}
