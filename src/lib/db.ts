@@ -253,6 +253,29 @@ class FlowpinDB extends Dexie {
       if (legacyRows.length === 0) return
       await canonical.bulkPut(legacyRows)
     })
+
+    // v10: Add waiting_for_reason to tasks for "Waiting For" workflow
+    this.version(10).stores({
+      buckets: "id, user_id, position, is_default",
+      tasks:
+        "id, user_id, bucket_id, section, source, source_id, status, connection_id, [user_id+bucket_id], [user_id+section], [user_id+source]",
+      sessions: "id, user_id, is_active, [user_id+is_active]",
+      timeEntries: "id, session_id, user_id, task_id, started_at",
+      importRules: "id, user_id, integration_type, is_active",
+      import_rules: "id, user_id, integration_type, is_active",
+      integrationKeys: "integrationId, type",
+      connections: "id, type, isActive",
+      syncQueue: "id, table, createdAt",
+      appState: "key",
+    }).upgrade(async (tx) => {
+      const tasksTable = getTableIfExists(tx, "tasks")
+      if (!tasksTable) return
+      await tasksTable.toCollection().modify((task: Record<string, unknown>) => {
+        if (task.waiting_for_reason === undefined) {
+          task.waiting_for_reason = null
+        }
+      })
+    })
   }
 }
 

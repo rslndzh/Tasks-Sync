@@ -71,6 +71,7 @@ export function TaskCard({
   const hasEstimate = task.estimate_minutes != null && task.estimate_minutes > 0
   const hasTracked = totalTracked > 0
   const showTimeInfo = hasTracked
+  const waitingReason = task.waiting_for_reason?.trim() ? task.waiting_for_reason.trim() : null
 
   return (
     <div
@@ -92,14 +93,25 @@ export function TaskCard({
       {/* Checkbox */}
       <button
         type="button"
-        className="flex-shrink-0 text-muted-foreground/30 transition-colors hover:text-primary"
+        className={cn(
+          "flex-shrink-0 transition-colors",
+          waitingReason
+            ? "text-muted-foreground/70 hover:text-muted-foreground"
+            : "text-muted-foreground/30 hover:text-primary",
+        )}
         onClick={(e) => {
           e.stopPropagation()
           void completeTask(task.id)
         }}
-        aria-label="Complete task"
+        aria-label={waitingReason ? "Unblock waiting task" : "Complete task"}
       >
-        <Circle className="h-[18px] w-[18px]" strokeWidth={1.5} />
+        <Circle
+          className={cn(
+            "h-[18px] w-[18px]",
+            waitingReason && "fill-muted stroke-muted-foreground/70",
+          )}
+          strokeWidth={1.5}
+        />
       </button>
 
       {/* Title + source — fills available space */}
@@ -114,17 +126,24 @@ export function TaskCard({
             className="h-auto border-none p-0 text-sm shadow-none focus-visible:ring-0"
           />
         ) : (
-          <div className="flex items-center gap-1.5">
-            {/* Provider icon for integration tasks */}
-            {task.source !== "manual" && (() => {
-              const Icon = PROVIDER_ICON_MAP[task.source]
-              return Icon ? <Icon className="size-4 flex-shrink-0" /> : null
-            })()}
-            <span className="truncate text-sm leading-tight">{task.title}</span>
-            {hasEstimate && (
-              <span className="rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
-                {fmt(task.estimate_minutes! * 60)}
-              </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              {/* Provider icon for integration tasks */}
+              {task.source !== "manual" && (() => {
+                const Icon = PROVIDER_ICON_MAP[task.source]
+                return Icon ? <Icon className="size-4 flex-shrink-0" /> : null
+              })()}
+              <span className="truncate text-sm leading-tight">{task.title}</span>
+              {hasEstimate && (
+                <span className="rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
+                  {fmt(task.estimate_minutes! * 60)}
+                </span>
+              )}
+            </div>
+            {waitingReason && (
+              <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">
+                Waiting for: {waitingReason}
+              </p>
             )}
           </div>
         )}
