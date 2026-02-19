@@ -45,6 +45,7 @@ export function mapInboxItemToLocalTask(
     title: item.title,
     description: null,
     source_description: sourceDesc,
+    waiting_for_reason: null,
     status: "active",
     source: item.sourceType,
     source_id: item.sourceId,

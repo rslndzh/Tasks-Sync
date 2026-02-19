@@ -57,6 +57,7 @@ CREATE TABLE tasks (
   title TEXT NOT NULL,
   description TEXT,
   source_description TEXT,
+  waiting_for_reason TEXT,
   status task_status NOT NULL DEFAULT 'active',
   source task_source NOT NULL DEFAULT 'manual',
   source_id TEXT,
