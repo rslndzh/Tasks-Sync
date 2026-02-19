@@ -711,10 +711,19 @@ export async function pushAllToSupabase(userId: string): Promise<void> {
     if (error) throw error
   }
 
+  const knownBucketIds = new Set(buckets.map((bucket) => bucket.id))
+
   // Push tasks (sanitize UUID fields — e.g. connection_id might be "")
   const tasks = await db.tasks.where("user_id").equals(userId).toArray()
   if (tasks.length > 0) {
-    const cleanTasks = tasks.map((t) => sanitizePayload(t as unknown as Record<string, unknown>))
+    const cleanTasks = tasks.map((task) => {
+      const cleaned = sanitizePayload(task as unknown as Record<string, unknown>)
+      const bucketId = typeof cleaned.bucket_id === "string" ? cleaned.bucket_id : null
+      if (bucketId && !knownBucketIds.has(bucketId)) {
+        cleaned.bucket_id = null
+      }
+      return cleaned
+    })
     const { error } = await client.from("tasks").upsert(cleanTasks)
     if (error) throw error
   }
