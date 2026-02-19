@@ -7,7 +7,7 @@ import { useTaskStore } from "@/stores/useTaskStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useConnectionStore } from "@/stores/useConnectionStore"
 import { useSyncStore } from "@/stores/useSyncStore"
-import type { SyncQueueItem, IntegrationConnection } from "@/types/local"
+import type { SyncQueueItem, IntegrationConnection, LocalTask } from "@/types/local"
 import type { ImportRule } from "@/types/import-rule"
 import type { IntegrationType, SectionType } from "@/types/database"
 
@@ -426,6 +426,45 @@ function importRuleToRemote(rule: ImportRule, userId: string): Record<string, un
   }
 }
 
+function parseUpdatedAtMs(value: unknown): number {
+  if (typeof value !== "string") return Number.NEGATIVE_INFINITY
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed
+}
+
+/**
+ * Keep local task rows when they are newer than pulled remote rows.
+ * This prevents stale remote pulls from clobbering recent local edits that
+ * have not been flushed yet (for example right before a reload).
+ */
+async function preferNewerLocalTaskRows(
+  remoteTasks: LocalTask[],
+): Promise<LocalTask[]> {
+  if (remoteTasks.length === 0) return remoteTasks
+
+  const ids = remoteTasks.map((task) => task.id)
+
+  if (ids.length === 0) return remoteTasks
+
+  const localRows = await db.tasks.bulkGet(ids)
+  const localById = new Map<string, LocalTask>()
+  for (const row of localRows) {
+    if (row) {
+      localById.set(row.id, row)
+    }
+  }
+
+  return remoteTasks.map((remoteRow) => {
+    const id = remoteRow.id
+    const localRow = localById.get(id)
+    if (!localRow) return remoteRow
+
+    const localUpdatedAt = parseUpdatedAtMs(localRow.updated_at)
+    const remoteUpdatedAt = parseUpdatedAtMs(remoteRow.updated_at)
+    return localUpdatedAt > remoteUpdatedAt ? localRow : remoteRow
+  })
+}
+
 // ============================================================================
 // Pull from Supabase (initial load + merge)
 // ============================================================================
@@ -458,7 +497,8 @@ export async function pullFromSupabase(): Promise<void> {
 
     if (tasksError) throw tasksError
     if (remoteTasks?.length) {
-      await db.tasks.bulkPut(remoteTasks)
+      const mergedTasks = await preferNewerLocalTaskRows(remoteTasks as LocalTask[])
+      await db.tasks.bulkPut(mergedTasks)
     }
 
     // Pull sessions (today only for performance)
