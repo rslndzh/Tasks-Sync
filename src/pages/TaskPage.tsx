@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Circle,
   Clock,
+  ExternalLink,
   Folder,
   Play,
   Square,
@@ -22,6 +23,7 @@ import { useTaskStore } from "@/stores/useTaskStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { db } from "@/lib/db"
+import { getTaskSourceUrl } from "@/lib/task-links"
 import { cn } from "@/lib/utils"
 import type { LocalTimeEntry } from "@/types/local"
 import type { SectionType } from "@/types/database"
@@ -57,6 +59,9 @@ export function TaskPage() {
 
   const task = tasks.find((t) => t.id === taskId)
   const isActiveInSession = isRunning && activeTaskId === taskId
+  const waitingReason = task?.waiting_for_reason?.trim() ? task.waiting_for_reason.trim() : null
+  const isWaiting = Boolean(waitingReason)
+  const sourceUrl = task ? getTaskSourceUrl(task) : null
 
   // Derive back label from the page the user navigated from
   const backLabel = useMemo(() => {
@@ -135,6 +140,20 @@ export function TaskPage() {
     void updateTask(taskId, { description: value })
   }
 
+  function handleToggleWaitingFor() {
+    if (!taskId) return
+    if (isWaiting) {
+      void updateTask(taskId, { waiting_for_reason: null })
+      return
+    }
+
+    const input = window.prompt("What are you waiting for?")
+    if (input == null) return
+    const reason = input.trim()
+    if (!reason) return
+    void updateTask(taskId, { waiting_for_reason: reason })
+  }
+
   // Wait for store to hydrate from Dexie before showing 404
   if (!isLoaded) {
     return (
@@ -177,12 +196,25 @@ export function TaskPage() {
             type="button"
             onClick={() => {
               void completeTask(task.id)
-              navigate(-1)
+              if (!isWaiting) {
+                navigate(-1)
+              }
             }}
-            className="mt-1 flex-shrink-0 text-muted-foreground/50 transition-colors hover:text-primary"
-            aria-label="Complete task"
+            className={cn(
+              "mt-1 flex-shrink-0 transition-colors",
+              isWaiting
+                ? "text-muted-foreground/70 hover:text-muted-foreground"
+                : "text-muted-foreground/50 hover:text-primary",
+            )}
+            aria-label={isWaiting ? "Unblock waiting task" : "Complete task"}
           >
-            <Circle className="h-6 w-6" strokeWidth={1.5} />
+            <Circle
+              className={cn(
+                "h-6 w-6",
+                isWaiting && "fill-muted stroke-muted-foreground/70",
+              )}
+              strokeWidth={1.5}
+            />
           </button>
 
           {/* Editable title */}
@@ -211,6 +243,12 @@ export function TaskPage() {
             )}
           </div>
         </div>
+
+        {waitingReason && (
+          <div className="mb-4 ml-9 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Waiting for: <span className="text-foreground/85">{waitingReason}</span>
+          </div>
+        )}
 
         {/* ── Source description (collapsible, above notes for integration tasks) ── */}
         {task.source_description && (
@@ -350,6 +388,30 @@ export function TaskPage() {
               {isRunning ? "Switch Focus" : "Start Focus"}
             </Button>
           )}
+
+          {sourceUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              className="gap-1.5 rounded-full text-muted-foreground hover:text-foreground"
+            >
+              <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open in source
+              </a>
+            </Button>
+          )}
+
+          <Button
+            variant={isWaiting ? "secondary" : "outline"}
+            size="sm"
+            onClick={handleToggleWaitingFor}
+            className="gap-1.5 rounded-full"
+          >
+            <Clock className="h-3.5 w-3.5" />
+            {isWaiting ? "Unblock" : "Waiting For"}
+          </Button>
 
           <Button
             variant="ghost"

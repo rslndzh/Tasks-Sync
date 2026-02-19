@@ -31,6 +31,8 @@ export interface LocalTask {
   source_description: string | null
   /** Provider project/list/workspace label for integration tasks */
   source_project: string | null
+  /** Optional reason the task is blocked/waiting on something */
+  waiting_for_reason: string | null
   status: TaskStatus
   source: TaskSource
   source_id: string | null

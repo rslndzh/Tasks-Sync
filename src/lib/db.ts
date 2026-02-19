@@ -254,7 +254,7 @@ class FlowpinDB extends Dexie {
       await canonical.bulkPut(legacyRows)
     })
 
-    // v10: Add source_project to tasks for provider project/list/workspace label.
+    // v10: Add waiting_for_reason to tasks for "Waiting For" workflow
     this.version(10).stores({
       buckets: "id, user_id, position, is_default",
       tasks:
@@ -270,9 +270,33 @@ class FlowpinDB extends Dexie {
     }).upgrade(async (tx) => {
       const tasksTable = getTableIfExists(tx, "tasks")
       if (!tasksTable) return
+      await tasksTable.toCollection().modify((task: Record<string, unknown>) => {
+        if (task.waiting_for_reason === undefined) {
+          task.waiting_for_reason = null
+        }
+      })
+    })
 
+    // v11: Add source_project to tasks for provider project/list/workspace label.
+    // Also backfill waiting_for_reason for users coming from older local builds.
+    this.version(11).stores({
+      buckets: "id, user_id, position, is_default",
+      tasks:
+        "id, user_id, bucket_id, section, source, source_id, status, connection_id, [user_id+bucket_id], [user_id+section], [user_id+source]",
+      sessions: "id, user_id, is_active, [user_id+is_active]",
+      timeEntries: "id, session_id, user_id, task_id, started_at",
+      importRules: "id, user_id, integration_type, is_active",
+      import_rules: "id, user_id, integration_type, is_active",
+      integrationKeys: "integrationId, type",
+      connections: "id, type, isActive",
+      syncQueue: "id, table, createdAt",
+      appState: "key",
+    }).upgrade(async (tx) => {
+      const tasksTable = getTableIfExists(tx, "tasks")
+      if (!tasksTable) return
       await tasksTable.toCollection().modify((task: Record<string, unknown>) => {
         if (task.source_project === undefined) task.source_project = null
+        if (task.waiting_for_reason === undefined) task.waiting_for_reason = null
       })
     })
   }
