@@ -85,6 +85,7 @@ export interface Database {
           title: string
           description: string | null
           source_description: string | null
+          waiting_for_reason: string | null
           status: TaskStatus
           source: TaskSource
           source_id: string | null
@@ -104,6 +105,7 @@ export interface Database {
           title: string
           description?: string | null
           source_description?: string | null
+          waiting_for_reason?: string | null
           status?: TaskStatus
           source?: TaskSource
           source_id?: string | null
@@ -121,6 +123,7 @@ export interface Database {
           title?: string
           description?: string | null
           source_description?: string | null
+          waiting_for_reason?: string | null
           status?: TaskStatus
           source?: TaskSource
           source_id?: string | null
