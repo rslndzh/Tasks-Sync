@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Circle,
   Clock,
-  File,
   Folder,
   Play,
   Square,
@@ -23,7 +22,6 @@ import { useTaskStore } from "@/stores/useTaskStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { db } from "@/lib/db"
-import { hasTaskNotes } from "@/lib/task-notes"
 import { cn } from "@/lib/utils"
 import type { LocalTimeEntry } from "@/types/local"
 import type { SectionType } from "@/types/database"
@@ -59,7 +57,6 @@ export function TaskPage() {
 
   const task = tasks.find((t) => t.id === taskId)
   const isActiveInSession = isRunning && activeTaskId === taskId
-  const hasNotes = hasTaskNotes(task?.description)
 
   // Derive back label from the page the user navigated from
   const backLabel = useMemo(() => {
@@ -200,25 +197,17 @@ export function TaskPage() {
                 className="h-auto border-none p-0 text-2xl font-semibold shadow-none focus-visible:ring-0"
               />
             ) : (
-              <div className="flex items-start gap-1.5">
-                <h1
-                  className="cursor-text text-2xl font-semibold leading-tight"
-                  onClick={() => setIsEditingTitle(true)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") setIsEditingTitle(true)
-                  }}
-                >
-                  {task.title}
-                </h1>
-                {hasNotes && (
-                  <File
-                    className="mt-1 size-4 flex-shrink-0 text-muted-foreground/45"
-                    aria-label="Task has notes"
-                  />
-                )}
-              </div>
+              <h1
+                className="cursor-text text-2xl font-semibold leading-tight"
+                onClick={() => setIsEditingTitle(true)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setIsEditingTitle(true)
+                }}
+              >
+                {task.title}
+              </h1>
             )}
           </div>
         </div>
