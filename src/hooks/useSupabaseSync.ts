@@ -150,8 +150,15 @@ export function useSupabaseSync() {
               return
             }
           } catch {
-            // silent — user can still trigger manual sync for detailed error
+            syncStore.setError("Sync failed after online recovery attempt.")
+            return
           }
+          const message = err instanceof Error
+            ? err.message
+            : typeof err === "object" && err !== null && "message" in err
+              ? String((err as { message: unknown }).message)
+              : String(err)
+          syncStore.setError(`Sync failed after reconnect: ${message}`)
         })
     }
   }, [isOnline, user])

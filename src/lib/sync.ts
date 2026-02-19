@@ -7,7 +7,7 @@ import { useTaskStore } from "@/stores/useTaskStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useConnectionStore } from "@/stores/useConnectionStore"
 import { useSyncStore } from "@/stores/useSyncStore"
-import type { SyncQueueItem, IntegrationConnection } from "@/types/local"
+import type { SyncQueueItem, IntegrationConnection, LocalTask } from "@/types/local"
 import type { ImportRule } from "@/types/import-rule"
 import type { IntegrationType, SectionType } from "@/types/database"
 
@@ -278,6 +278,38 @@ function sanitizePayload(payload: Record<string, unknown>): Record<string, unkno
   return cleaned
 }
 
+function isTaskBucketForeignKeyError(err: unknown): boolean {
+  if (typeof err !== "object" || err == null) return false
+  const maybe = err as { code?: unknown; message?: unknown; details?: unknown }
+  const code = typeof maybe.code === "string" ? maybe.code : ""
+  const text = `${String(maybe.message ?? "")} ${String(maybe.details ?? "")}`.toLowerCase()
+  return code === "23503" && text.includes("tasks_bucket_id_fkey")
+}
+
+async function repairTaskBucketReference(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  let bucketId = typeof payload.bucket_id === "string" ? payload.bucket_id : null
+  if (!bucketId && typeof payload.id === "string") {
+    const localTask = await db.tasks.get(payload.id)
+    bucketId = typeof localTask?.bucket_id === "string" ? localTask.bucket_id : null
+  }
+  if (!bucketId) return null
+
+  const localBucket = await db.buckets.get(bucketId)
+  if (localBucket) {
+    const cleanBucket = sanitizePayload(localBucket as unknown as Record<string, unknown>)
+    const { error } = await client.from("buckets").upsert(cleanBucket)
+    if (error) throw error
+    return payload
+  }
+
+  // Bucket reference is stale locally too — drop it so the task can sync.
+  return { ...payload, bucket_id: null }
+}
+
 async function pushToSupabase(item: SyncQueueItem): Promise<void> {
   if (!supabase) return
 
@@ -292,13 +324,28 @@ async function pushToSupabase(item: SyncQueueItem): Promise<void> {
   switch (operation) {
     case "insert": {
       // Use upsert to handle conflicts (e.g., duplicate Inbox bucket)
-      const { error } = await client.from(table).upsert(payload)
+      let { error } = await client.from(table).upsert(payload)
+      if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
+        const repairedPayload = await repairTaskBucketReference(client, payload)
+        if (repairedPayload) {
+          const retry = await client.from(table).upsert(repairedPayload)
+          error = retry.error
+        }
+      }
       if (error) throw error
       break
     }
     case "update": {
       const { id, ...rest } = payload
-      const { error } = await client.from(table).update(rest).eq("id", id as string)
+      let { error } = await client.from(table).update(rest).eq("id", id as string)
+      if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
+        const repairedPayload = await repairTaskBucketReference(client, payload)
+        if (repairedPayload) {
+          const { id: retryId, ...retryRest } = repairedPayload
+          const retry = await client.from(table).update(retryRest).eq("id", retryId as string)
+          error = retry.error
+        }
+      }
       // Ignore 404-style errors — the row might have been deleted on server
       if (error && error.code !== "PGRST116") throw error
       break
@@ -379,6 +426,45 @@ function importRuleToRemote(rule: ImportRule, userId: string): Record<string, un
   }
 }
 
+function parseUpdatedAtMs(value: unknown): number {
+  if (typeof value !== "string") return Number.NEGATIVE_INFINITY
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed
+}
+
+/**
+ * Keep local task rows when they are newer than pulled remote rows.
+ * This prevents stale remote pulls from clobbering recent local edits that
+ * have not been flushed yet (for example right before a reload).
+ */
+async function preferNewerLocalTaskRows(
+  remoteTasks: LocalTask[],
+): Promise<LocalTask[]> {
+  if (remoteTasks.length === 0) return remoteTasks
+
+  const ids = remoteTasks.map((task) => task.id)
+
+  if (ids.length === 0) return remoteTasks
+
+  const localRows = await db.tasks.bulkGet(ids)
+  const localById = new Map<string, LocalTask>()
+  for (const row of localRows) {
+    if (row) {
+      localById.set(row.id, row)
+    }
+  }
+
+  return remoteTasks.map((remoteRow) => {
+    const id = remoteRow.id
+    const localRow = localById.get(id)
+    if (!localRow) return remoteRow
+
+    const localUpdatedAt = parseUpdatedAtMs(localRow.updated_at)
+    const remoteUpdatedAt = parseUpdatedAtMs(remoteRow.updated_at)
+    return localUpdatedAt > remoteUpdatedAt ? localRow : remoteRow
+  })
+}
+
 // ============================================================================
 // Pull from Supabase (initial load + merge)
 // ============================================================================
@@ -411,7 +497,8 @@ export async function pullFromSupabase(): Promise<void> {
 
     if (tasksError) throw tasksError
     if (remoteTasks?.length) {
-      await db.tasks.bulkPut(remoteTasks)
+      const mergedTasks = await preferNewerLocalTaskRows(remoteTasks as LocalTask[])
+      await db.tasks.bulkPut(mergedTasks)
     }
 
     // Pull sessions (today only for performance)
@@ -664,10 +751,19 @@ export async function pushAllToSupabase(userId: string): Promise<void> {
     if (error) throw error
   }
 
+  const knownBucketIds = new Set(buckets.map((bucket) => bucket.id))
+
   // Push tasks (sanitize UUID fields — e.g. connection_id might be "")
   const tasks = await db.tasks.where("user_id").equals(userId).toArray()
   if (tasks.length > 0) {
-    const cleanTasks = tasks.map((t) => sanitizePayload(t as unknown as Record<string, unknown>))
+    const cleanTasks = tasks.map((task) => {
+      const cleaned = sanitizePayload(task as unknown as Record<string, unknown>)
+      const bucketId = typeof cleaned.bucket_id === "string" ? cleaned.bucket_id : null
+      if (bucketId && !knownBucketIds.has(bucketId)) {
+        cleaned.bucket_id = null
+      }
+      return cleaned
+    })
     const { error } = await client.from("tasks").upsert(cleanTasks)
     if (error) throw error
   }
