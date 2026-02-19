@@ -11,6 +11,7 @@ import type {
   SyncQueueItem,
 } from "@/types/local"
 import type { ImportRule } from "@/types/import-rule"
+import { normalizeTaskSourceMetadata } from "@/lib/task-source"
 
 function getTableIfExists(tx: Transaction, name: string): Dexie.Table<Record<string, unknown>, unknown> | null {
   try {
@@ -298,6 +299,55 @@ class FlowpinDB extends Dexie {
         if (task.source_project === undefined) task.source_project = null
         if (task.waiting_for_reason === undefined) task.waiting_for_reason = null
       })
+    })
+
+    // v12: Replace legacy source_project usage with source_metadata.
+    // Backfills existing task rows and queued task payloads.
+    this.version(12).stores({
+      buckets: "id, user_id, position, is_default",
+      tasks:
+        "id, user_id, bucket_id, section, source, source_id, status, connection_id, [user_id+bucket_id], [user_id+section], [user_id+source]",
+      sessions: "id, user_id, is_active, [user_id+is_active]",
+      timeEntries: "id, session_id, user_id, task_id, started_at",
+      importRules: "id, user_id, integration_type, is_active",
+      import_rules: "id, user_id, integration_type, is_active",
+      integrationKeys: "integrationId, type",
+      connections: "id, type, isActive",
+      syncQueue: "id, table, createdAt",
+      appState: "key",
+    }).upgrade(async (tx) => {
+      const tasksTable = getTableIfExists(tx, "tasks")
+      if (tasksTable) {
+        await tasksTable.toCollection().modify((task: Record<string, unknown>) => {
+          const nextSourceMetadata = normalizeTaskSourceMetadata(task.source_metadata, {
+            project: task.source_project,
+            description: task.source_description,
+          })
+          task.source_metadata = nextSourceMetadata
+        })
+      }
+
+      const syncQueueTable = getTableIfExists(tx, "syncQueue")
+      if (syncQueueTable) {
+        await syncQueueTable.toCollection().modify((item: Record<string, unknown>) => {
+          if (item.table !== "tasks") return
+          const payload = item.payload as Record<string, unknown> | undefined
+          if (!payload || typeof payload !== "object") return
+
+          const normalized = { ...payload }
+          const nextSourceMetadata = normalizeTaskSourceMetadata(normalized.source_metadata, {
+            project: normalized.source_project,
+            description: normalized.source_description,
+          })
+          if ("source_metadata" in normalized || nextSourceMetadata) {
+            normalized.source_metadata = nextSourceMetadata
+          }
+          if ("source_project" in normalized) {
+            delete normalized.source_project
+          }
+          item.payload = normalized
+        })
+      }
     })
   }
 }

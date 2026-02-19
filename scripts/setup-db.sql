@@ -57,7 +57,7 @@ CREATE TABLE tasks (
   title TEXT NOT NULL,
   description TEXT,
   source_description TEXT,
-  source_project TEXT,
+  source_metadata JSONB,
   waiting_for_reason TEXT,
   status task_status NOT NULL DEFAULT 'active',
   source task_source NOT NULL DEFAULT 'manual',

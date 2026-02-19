@@ -7,6 +7,7 @@ import { useTaskStore } from "@/stores/useTaskStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useConnectionStore } from "@/stores/useConnectionStore"
 import { useSyncStore } from "@/stores/useSyncStore"
+import { normalizeTaskSourceMetadata } from "@/lib/task-source"
 import type { SyncQueueItem, IntegrationConnection, LocalTask } from "@/types/local"
 import type { ImportRule } from "@/types/import-rule"
 import type { IntegrationType, SectionType } from "@/types/database"
@@ -310,52 +311,132 @@ async function repairTaskBucketReference(
   return { ...payload, bucket_id: null }
 }
 
+type MissingColumnInfo = {
+  column: string
+  table: string
+}
+
+function parseMissingColumnError(message: string): MissingColumnInfo | null {
+  // PostgREST schema cache error:
+  // "Could not find the 'source_project' column of 'tasks' in the schema cache"
+  const schemaCacheMatch = message.match(/Could not find the '([^']+)' column of '([^']+)' in the schema cache/i)
+  if (schemaCacheMatch) {
+    return {
+      column: schemaCacheMatch[1],
+      table: schemaCacheMatch[2],
+    }
+  }
+
+  // Postgres relation error:
+  // "column \"source_project\" of relation \"tasks\" does not exist"
+  const relationMatch = message.match(/column ["']([^"']+)["'] of relation ["']([^"']+)["'] does not exist/i)
+  if (relationMatch) {
+    return {
+      column: relationMatch[1],
+      table: relationMatch[2],
+    }
+  }
+
+  return null
+}
+
+function stripColumn(payload: Record<string, unknown>, column: string): Record<string, unknown> {
+  if (!(column in payload)) return payload
+  const next = { ...payload }
+  delete next[column]
+  return next
+}
+
+function normalizeTaskSyncPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...payload }
+  const hasSourceMetadataFields =
+    "source_metadata" in next ||
+    "source_project" in next ||
+    "source_description" in next
+
+  if (hasSourceMetadataFields) {
+    const normalized = normalizeTaskSourceMetadata(next.source_metadata, {
+      project: next.source_project,
+      description: next.source_description,
+    })
+    if ("source_metadata" in next || normalized) {
+      next.source_metadata = normalized
+    }
+  }
+
+  if ("source_project" in next) {
+    delete next.source_project
+  }
+
+  return next
+}
+
 async function pushToSupabase(item: SyncQueueItem): Promise<void> {
   if (!supabase) return
 
   const { table, operation } = item
-  const payload = sanitizePayload(item.payload)
+  const sanitizedPayload = sanitizePayload(item.payload)
+  const payload = table === "tasks"
+    ? normalizeTaskSyncPayload(sanitizedPayload)
+    : sanitizedPayload
 
   // Dynamic table name means TypeScript can't narrow the upsert/update types.
   // We use `as any` here because the payload shapes are validated at queue-time.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = supabase as any
 
-  switch (operation) {
-    case "insert": {
-      // Use upsert to handle conflicts (e.g., duplicate Inbox bucket)
-      let { error } = await client.from(table).upsert(payload)
-      if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
-        const repairedPayload = await repairTaskBucketReference(client, payload)
-        if (repairedPayload) {
-          const retry = await client.from(table).upsert(repairedPayload)
-          error = retry.error
+  const runMutation = async (payloadToPush: Record<string, unknown>): Promise<void> => {
+    switch (operation) {
+      case "insert": {
+        // Use upsert to handle conflicts (e.g., duplicate Inbox bucket)
+        let { error } = await client.from(table).upsert(payloadToPush)
+        if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
+          const repairedPayload = await repairTaskBucketReference(client, payloadToPush)
+          if (repairedPayload) {
+            const retry = await client.from(table).upsert(repairedPayload)
+            error = retry.error
+          }
         }
+        if (error) throw error
+        break
       }
-      if (error) throw error
-      break
-    }
-    case "update": {
-      const { id, ...rest } = payload
-      let { error } = await client.from(table).update(rest).eq("id", id as string)
-      if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
-        const repairedPayload = await repairTaskBucketReference(client, payload)
-        if (repairedPayload) {
-          const { id: retryId, ...retryRest } = repairedPayload
-          const retry = await client.from(table).update(retryRest).eq("id", retryId as string)
-          error = retry.error
+      case "update": {
+        const { id, ...rest } = payloadToPush
+        // If the only changed field is an unsupported remote column, treat as no-op.
+        if (Object.keys(rest).length === 0) return
+
+        let { error } = await client.from(table).update(rest).eq("id", id as string)
+        if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
+          const repairedPayload = await repairTaskBucketReference(client, payloadToPush)
+          if (repairedPayload) {
+            const { id: retryId, ...retryRest } = repairedPayload
+            if (Object.keys(retryRest).length === 0) return
+            const retry = await client.from(table).update(retryRest).eq("id", retryId as string)
+            error = retry.error
+          }
         }
+        // Ignore 404-style errors — the row might have been deleted on server
+        if (error && error.code !== "PGRST116") throw error
+        break
       }
-      // Ignore 404-style errors — the row might have been deleted on server
-      if (error && error.code !== "PGRST116") throw error
-      break
+      case "delete": {
+        const { error } = await client.from(table).delete().eq("id", payloadToPush.id as string)
+        // Ignore "not found" errors on delete — already gone server-side
+        if (error && error.code !== "PGRST116") throw error
+        break
+      }
     }
-    case "delete": {
-      const { error } = await client.from(table).delete().eq("id", payload.id as string)
-      // Ignore "not found" errors on delete — already gone server-side
-      if (error && error.code !== "PGRST116") throw error
-      break
-    }
+  }
+
+  try {
+    await runMutation(payload)
+  } catch (err) {
+    const message = extractErrorMessage(err)
+    const missingColumn = parseMissingColumnError(message)
+    if (!missingColumn || missingColumn.table !== table) throw err
+
+    const fallbackPayload = stripColumn(payload, missingColumn.column)
+    await runMutation(fallbackPayload)
   }
 }
 
@@ -757,15 +838,25 @@ export async function pushAllToSupabase(userId: string): Promise<void> {
   const tasks = await db.tasks.where("user_id").equals(userId).toArray()
   if (tasks.length > 0) {
     const cleanTasks = tasks.map((task) => {
-      const cleaned = sanitizePayload(task as unknown as Record<string, unknown>)
+      const cleaned = normalizeTaskSyncPayload(
+        sanitizePayload(task as unknown as Record<string, unknown>),
+      )
       const bucketId = typeof cleaned.bucket_id === "string" ? cleaned.bucket_id : null
       if (bucketId && !knownBucketIds.has(bucketId)) {
         cleaned.bucket_id = null
       }
       return cleaned
     })
-    const { error } = await client.from("tasks").upsert(cleanTasks)
-    if (error) throw error
+    let { error } = await client.from("tasks").upsert(cleanTasks)
+    if (error) {
+      const missingColumn = parseMissingColumnError(extractErrorMessage(error))
+      if (missingColumn?.table === "tasks") {
+        const fallbackTasks = cleanTasks.map((task) => stripColumn(task, missingColumn.column))
+        const retry = await client.from("tasks").upsert(fallbackTasks)
+        error = retry.error
+      }
+      if (error) throw error
+    }
   }
 
   // Push sessions

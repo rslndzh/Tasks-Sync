@@ -29,8 +29,10 @@ export interface LocalTask {
   description: string | null
   /** Original description from integration provider (read-only) */
   source_description: string | null
-  /** Provider project/list/workspace label for integration tasks */
-  source_project: string | null
+  /** Provider metadata (project, description, labels, URLs, etc.) */
+  source_metadata: Record<string, unknown> | null
+  /** Legacy provider project/list/workspace label (deprecated, optional) */
+  source_project?: string | null
   /** Optional reason the task is blocked/waiting on something */
   waiting_for_reason: string | null
   status: TaskStatus

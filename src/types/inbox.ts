@@ -1,5 +1,6 @@
 import type { IntegrationType } from "@/types/database"
 import type { LocalTask } from "@/types/local"
+import { normalizeTaskSourceMetadata } from "@/lib/task-source"
 
 /**
  * Normalized inbox item — shared shape across all integration providers.
@@ -53,6 +54,18 @@ export function deriveSourceProject(item: InboxItem): string | null {
 }
 
 /**
+ * Build task-level source metadata bag from an inbox item.
+ * Keeps provider-specific metadata while standardizing common keys.
+ */
+export function buildTaskSourceMetadata(item: InboxItem): Record<string, unknown> | null {
+  return normalizeTaskSourceMetadata(item.metadata, {
+    project: deriveSourceProject(item),
+    description: item.metadata.description,
+    url: item.url,
+  })
+}
+
+/**
  * Convert a normalized InboxItem into a LocalTask ready for Dexie.
  * Caller provides the target bucket + section.
  */
@@ -66,7 +79,7 @@ export function mapInboxItemToLocalTask(
 ): LocalTask {
   // Pull original description from provider metadata if available
   const sourceDesc = typeof item.metadata.description === "string" ? item.metadata.description : null
-  const sourceProject = deriveSourceProject(item)
+  const sourceMetadata = buildTaskSourceMetadata(item)
 
   return {
     id: crypto.randomUUID(),
@@ -74,7 +87,7 @@ export function mapInboxItemToLocalTask(
     title: item.title,
     description: null,
     source_description: sourceDesc,
-    source_project: sourceProject,
+    source_metadata: sourceMetadata,
     waiting_for_reason: null,
     status: "active",
     source: item.sourceType,

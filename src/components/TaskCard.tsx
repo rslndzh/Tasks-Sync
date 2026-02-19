@@ -9,6 +9,7 @@ import { useSessionStore } from "@/stores/useSessionStore"
 import { PROVIDER_ICON_MAP } from "@/components/icons/ProviderIcons"
 import { hasTaskNotes } from "@/lib/task-notes"
 import { getTaskSourceUrl } from "@/lib/task-links"
+import { getTaskSourceProject } from "@/lib/task-source"
 import type { LocalTask } from "@/types/local"
 
 interface TaskCardProps {
@@ -77,6 +78,7 @@ export function TaskCard({
   const hasNotes = hasTaskNotes(task.description)
   const waitingReason = task.waiting_for_reason?.trim() ? task.waiting_for_reason.trim() : null
   const sourceUrl = getTaskSourceUrl(task)
+  const sourceProject = getTaskSourceProject(task)
 
   return (
     <div
@@ -139,9 +141,9 @@ export function TaskCard({
                 return Icon ? <Icon className="size-4 flex-shrink-0" /> : null
               })()}
               <span className="truncate text-sm leading-tight">{task.title}</span>
-              {task.source !== "manual" && task.source_project && (
+              {task.source !== "manual" && sourceProject && (
                 <span className="max-w-[11rem] truncate rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
-                  {task.source_project}
+                  {sourceProject}
                 </span>
               )}
               {hasNotes && (

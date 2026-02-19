@@ -10,6 +10,7 @@ import type {
 } from "@/types/linear"
 import { LinearApiError } from "@/types/linear"
 import type { LocalTask } from "@/types/local"
+import { normalizeTaskSourceMetadata } from "@/lib/task-source"
 
 const LINEAR_API_URL = "https://api.linear.app/graphql"
 
@@ -344,7 +345,22 @@ export function mapLinearIssueToTask(
     title: `[${issue.identifier}] ${issue.title}`,
     description: null,
     source_description: issue.description,
-    source_project: issue.project?.name ?? null,
+    source_metadata: normalizeTaskSourceMetadata(
+      {
+        identifier: issue.identifier,
+        projectName: issue.project?.name ?? null,
+        teamId: issue.team?.id,
+        teamName: issue.team?.name,
+        teamKey: issue.team?.key,
+        description: issue.description,
+        url: issue.url ?? null,
+      },
+      {
+        project: issue.project?.name ?? null,
+        description: issue.description,
+        url: issue.url ?? null,
+      },
+    ),
     waiting_for_reason: null,
     status: "active",
     source: "linear",

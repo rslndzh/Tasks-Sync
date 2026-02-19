@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { getCurrentUserId } from "@/lib/auth"
 import { queueSync } from "@/lib/sync"
 import { writebackCompletion } from "@/lib/writeback"
+import { normalizeTaskSourceMetadata } from "@/lib/task-source"
 import { useSessionStore } from "@/stores/useSessionStore"
 import type { LocalTask } from "@/types/local"
 import type { SectionType, TodayLaneType } from "@/types/database"
@@ -72,7 +73,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const tasks = (await db.tasks.where("status").equals("active").toArray()).map((task) => ({
       ...task,
       today_lane: task.today_lane ?? null,
-      source_project: task.source_project ?? null,
+      source_metadata: normalizeTaskSourceMetadata(task.source_metadata, {
+        project: task.source_project,
+        description: task.source_description,
+      }),
       waiting_for_reason: task.waiting_for_reason ?? null,
     }))
     set({ tasks, isLoaded: true })
@@ -92,7 +96,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       title,
       description: null,
       source_description: null,
-      source_project: null,
+      source_metadata: null,
       waiting_for_reason: null,
       status: "active",
       source: "manual",

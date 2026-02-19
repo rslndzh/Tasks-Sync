@@ -5,7 +5,8 @@ import { queueSync } from "@/lib/sync"
 import type { IntegrationConnection } from "@/types/local"
 import type { IntegrationType } from "@/types/database"
 import type { InboxItem } from "@/types/inbox"
-import { deriveSourceProject, mapInboxItemToLocalTask } from "@/types/inbox"
+import { buildTaskSourceMetadata, mapInboxItemToLocalTask } from "@/types/inbox"
+import { normalizeTaskSourceMetadata, sourceMetadataSignature } from "@/lib/task-source"
 import { validateApiKey as validateLinearKey, fetchTeams, fetchAssignedIssues, fetchWorkflowStates, DEFAULT_LINEAR_STATE_FILTER, LINEAR_STATE_TYPES } from "@/integrations/linear"
 import type { LinearStateType } from "@/integrations/linear"
 import { mapLinearIssueToInboxItem } from "@/integrations/linear-mapper"
@@ -227,23 +228,27 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         .toArray()
       let shouldReloadTasks = false
 
-      // Keep provider project/list/workspace labels fresh for imported tasks.
+      // Keep provider metadata fresh for imported tasks.
       const nowIso = new Date().toISOString()
       for (const task of existingConnectionTasks) {
         if (!task.source_id) continue
         const sourceItem = itemBySourceId.get(task.source_id)
         if (!sourceItem) continue
 
-        const nextSourceProject = deriveSourceProject(sourceItem)
-        if ((task.source_project ?? null) === nextSourceProject) continue
+        const currentMetadata = normalizeTaskSourceMetadata(task.source_metadata, {
+          project: task.source_project,
+          description: task.source_description,
+        })
+        const nextMetadata = buildTaskSourceMetadata(sourceItem)
+        if (sourceMetadataSignature(currentMetadata) === sourceMetadataSignature(nextMetadata)) continue
 
         await db.tasks.update(task.id, {
-          source_project: nextSourceProject,
+          source_metadata: nextMetadata,
           updated_at: nowIso,
         })
         void queueSync("tasks", "update", {
           id: task.id,
-          source_project: nextSourceProject,
+          source_metadata: nextMetadata,
           updated_at: nowIso,
         })
         shouldReloadTasks = true

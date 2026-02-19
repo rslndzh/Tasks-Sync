@@ -24,6 +24,7 @@ import { useBucketStore } from "@/stores/useBucketStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { db } from "@/lib/db"
 import { getTaskSourceUrl } from "@/lib/task-links"
+import { getTaskSourceProject } from "@/lib/task-source"
 import { cn } from "@/lib/utils"
 import type { LocalTimeEntry } from "@/types/local"
 import type { SectionType } from "@/types/database"
@@ -62,6 +63,7 @@ export function TaskPage() {
   const waitingReason = task?.waiting_for_reason?.trim() ? task.waiting_for_reason.trim() : null
   const isWaiting = Boolean(waitingReason)
   const sourceUrl = task ? getTaskSourceUrl(task) : null
+  const sourceProject = task ? getTaskSourceProject(task) : null
 
   // Derive back label from the page the user navigated from
   const backLabel = useMemo(() => {
@@ -353,9 +355,9 @@ export function TaskPage() {
               {SOURCE_LABELS[task.source] ?? task.source}
             </Badge>
           )}
-          {task.source !== "manual" && task.source_project && (
+          {task.source !== "manual" && sourceProject && (
             <Badge variant="outline" className="h-7 rounded-full border-border/60 px-3 text-[10px] font-normal">
-              {task.source_project}
+              {sourceProject}
             </Badge>
           )}
         </div>
