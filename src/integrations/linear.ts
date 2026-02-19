@@ -344,6 +344,7 @@ export function mapLinearIssueToTask(
     title: `[${issue.identifier}] ${issue.title}`,
     description: null,
     source_description: issue.description,
+    source_project: issue.project?.name ?? null,
     status: "active",
     source: "linear",
     source_id: issue.id,

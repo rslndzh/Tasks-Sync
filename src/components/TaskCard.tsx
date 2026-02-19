@@ -121,6 +121,11 @@ export function TaskCard({
               return Icon ? <Icon className="size-4 flex-shrink-0" /> : null
             })()}
             <span className="truncate text-sm leading-tight">{task.title}</span>
+            {task.source !== "manual" && task.source_project && (
+              <span className="max-w-[11rem] truncate rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
+                {task.source_project}
+              </span>
+            )}
             {hasEstimate && (
               <span className="rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
                 {fmt(task.estimate_minutes! * 60)}

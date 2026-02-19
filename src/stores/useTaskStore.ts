@@ -65,6 +65,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const tasks = (await db.tasks.where("status").equals("active").toArray()).map((task) => ({
       ...task,
       today_lane: task.today_lane ?? null,
+      source_project: task.source_project ?? null,
     }))
     set({ tasks, isLoaded: true })
   },
@@ -83,6 +84,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       title,
       description: null,
       source_description: null,
+      source_project: null,
       status: "active",
       source: "manual",
       source_id: null,
