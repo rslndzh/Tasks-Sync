@@ -154,10 +154,10 @@ export function CalendarRail() {
             return (
               <div
                 key={hour}
-                className="absolute left-0 right-0 border-t border-border/40"
+                className="absolute left-0 right-0 border-t border-border/55"
                 style={{ top: `${i * HOUR_HEIGHT}px` }}
               >
-                <span className="absolute -top-2 left-0 text-[9px] text-muted-foreground/60">
+                <span className="absolute -top-2 left-0 text-[10px] font-medium text-muted-foreground/85">
                   {hour === 0 || hour === 24
                     ? "12a"
                     : hour < 12
@@ -260,12 +260,12 @@ export function CalendarRail() {
                   height: `${height}px`,
                   borderColor: block.color,
                   backgroundColor: block.color,
-                  opacity: 0.18,
+                  opacity: 0.28,
                 }}
                 title={`${block.title} — ${formatTime(block.remainingSeconds)}`}
               >
                 {height > 14 && (
-                  <p className="truncate px-1 py-0.5 text-[9px] font-medium text-foreground/70">
+                  <p className="truncate px-1 py-0.5 text-[10px] font-semibold text-foreground/95">
                     {block.title}
                   </p>
                 )}
