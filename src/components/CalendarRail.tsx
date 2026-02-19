@@ -1,9 +1,11 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { formatTime } from "@/components/Timer"
 import { PROVIDER_ICON_MAP } from "@/components/icons/ProviderIcons"
+import { useTrackedTimeMap } from "@/hooks/useTrackedTime"
+import { useActiveTimerModel } from "@/hooks/useActiveTimerModel"
 import type { TaskSource } from "@/types/database"
 
 const HOUR_HEIGHT = 48 // pixels per hour
@@ -32,6 +34,8 @@ export function CalendarRail() {
     useSessionStore()
   const tasks = useTaskStore((s) => s.tasks)
   const buckets = useBucketStore((s) => s.buckets)
+  const trackedMap = useTrackedTimeMap()
+  const timer = useActiveTimerModel()
 
   useEffect(() => {
     void loadTodaySessions()
@@ -50,6 +54,67 @@ export function CalendarRail() {
   }, 0)
 
   const hasActivity = todayTimeEntries.length > 0 || isRunning
+  const todayTasks = useMemo(() => {
+    return tasks
+      .filter((task) => task.section === "today" && task.status !== "completed")
+      .sort((a, b) => a.position - b.position)
+  }, [tasks])
+
+  const playlistBlocks = useMemo(() => {
+    if (todayTasks.length === 0) return []
+
+    const activeTaskId = timer.task?.id ?? null
+    const playlistStartMinutes = Math.max(
+      0,
+      Math.round((now.getTime() - startOfDay.getTime()) / 60000),
+    )
+    const maxMinutes = TOTAL_HOURS * 60
+    let cursorMinutes = Math.min(playlistStartMinutes, maxMinutes)
+
+    return todayTasks.reduce<
+      Array<{
+        taskId: string
+        title: string
+        startMinutes: number
+        durationMinutes: number
+        color: string
+        remainingSeconds: number
+      }>
+    >((acc, task) => {
+      const estimateMinutes = task.estimate_minutes ?? 0
+      if (estimateMinutes <= 0) return acc
+
+      let trackedSeconds = trackedMap.get(task.id) ?? 0
+      if (activeTaskId === task.id) {
+        trackedSeconds += timer.activeEntryElapsedSeconds
+      }
+      const remainingSeconds = Math.max(0, estimateMinutes * 60 - trackedSeconds)
+      if (remainingSeconds <= 0) return acc
+
+      const bucket = task.bucket_id ? buckets.find((b) => b.id === task.bucket_id) : undefined
+      const color = bucket?.color ?? hashColor(task.id)
+      const durationMinutes = Math.max(1, Math.ceil(remainingSeconds / 60))
+
+      const startMinutes = cursorMinutes
+      const endMinutes = Math.min(maxMinutes, startMinutes + durationMinutes)
+      if (startMinutes >= maxMinutes) return acc
+
+      acc.push({
+        taskId: task.id,
+        title: task.title,
+        startMinutes,
+        durationMinutes: Math.max(1, endMinutes - startMinutes),
+        color,
+        remainingSeconds,
+      })
+      cursorMinutes = endMinutes
+      return acc
+    }, [])
+  }, [todayTasks, trackedMap, timer.activeEntryElapsedSeconds, timer.task?.id, buckets, now, startOfDay])
+
+  const playlistSeconds = useMemo(() => {
+    return playlistBlocks.reduce((sum, block) => sum + block.remainingSeconds, 0)
+  }, [playlistBlocks])
 
   return (
     <div className="flex h-full flex-col">
@@ -68,6 +133,11 @@ export function CalendarRail() {
         ) : (
           <p className="mt-0.5 text-xs text-muted-foreground">
             No sessions yet — start one to light up your day.
+          </p>
+        )}
+        {playlistBlocks.length > 0 && (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Playlist: {playlistBlocks.length} task{playlistBlocks.length !== 1 ? "s" : ""} · {formatTime(playlistSeconds)}
           </p>
         )}
       </div>
@@ -171,6 +241,33 @@ export function CalendarRail() {
                 {/* Growing edge animation for active entry */}
                 {isActive && (
                   <div className="absolute bottom-0 left-0 right-0 h-1 animate-pulse rounded-b-sm bg-white/30" />
+                )}
+              </div>
+            )
+          })}
+
+          {/* Playlist blocks (planned focus) */}
+          {playlistBlocks.map((block) => {
+            const top = (block.startMinutes / 60) * HOUR_HEIGHT
+            const height = Math.max(4, (block.durationMinutes / 60) * HOUR_HEIGHT)
+
+            return (
+              <div
+                key={`playlist-${block.taskId}-${block.startMinutes}`}
+                className="absolute left-6 right-2 rounded-sm border border-dashed"
+                style={{
+                  top: `${top}px`,
+                  height: `${height}px`,
+                  borderColor: block.color,
+                  backgroundColor: block.color,
+                  opacity: 0.18,
+                }}
+                title={`${block.title} — ${formatTime(block.remainingSeconds)}`}
+              >
+                {height > 14 && (
+                  <p className="truncate px-1 py-0.5 text-[9px] font-medium text-foreground/70">
+                    {block.title}
+                  </p>
                 )}
               </div>
             )
