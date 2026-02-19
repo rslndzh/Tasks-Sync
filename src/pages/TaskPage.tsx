@@ -353,6 +353,11 @@ export function TaskPage() {
               {SOURCE_LABELS[task.source] ?? task.source}
             </Badge>
           )}
+          {task.source !== "manual" && task.source_project && (
+            <Badge variant="outline" className="h-7 rounded-full border-border/60 px-3 text-[10px] font-normal">
+              {task.source_project}
+            </Badge>
+          )}
         </div>
 
         {/* ── Actions ── */}

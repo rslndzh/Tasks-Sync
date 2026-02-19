@@ -4,6 +4,22 @@ import type { InboxItem } from "@/types/inbox"
 
 const ATTIO_API_URL = "https://api.attio.com/v2"
 
+function toTitleCaseWords(value: string): string {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function deriveAttioProjectName(task: AttioTask): string | null {
+  const firstLinked = task.linked_records[0]
+  if (!firstLinked?.target_object_id) return null
+  const normalized = firstLinked.target_object_id.replace(/[_-]+/g, " ").trim()
+  if (!normalized) return null
+  return toTitleCaseWords(normalized)
+}
+
 // ============================================================================
 // Core REST client
 // ============================================================================
@@ -205,6 +221,7 @@ export function mapAttioTaskToInboxItem(
     assigneeCount > 0 ? `${assigneeCount} assignee${assigneeCount > 1 ? "s" : ""}` : null
 
   const parts = [deadlinePart, assigneePart].filter(Boolean)
+  const projectName = deriveAttioProjectName(task)
 
   return {
     id: task.id.task_id,
@@ -214,6 +231,7 @@ export function mapAttioTaskToInboxItem(
     title: task.content_plaintext,
     subtitle: parts.length > 0 ? parts.join(" · ") : null,
     metadata: {
+      projectName,
       workspaceId: task.id.workspace_id,
       deadlineAt: task.deadline_at,
       linkedRecords: task.linked_records,

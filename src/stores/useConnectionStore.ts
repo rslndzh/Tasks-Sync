@@ -5,7 +5,7 @@ import { queueSync } from "@/lib/sync"
 import type { IntegrationConnection } from "@/types/local"
 import type { IntegrationType } from "@/types/database"
 import type { InboxItem } from "@/types/inbox"
-import { mapInboxItemToLocalTask } from "@/types/inbox"
+import { deriveSourceProject, mapInboxItemToLocalTask } from "@/types/inbox"
 import { validateApiKey as validateLinearKey, fetchTeams, fetchAssignedIssues, fetchWorkflowStates, DEFAULT_LINEAR_STATE_FILTER, LINEAR_STATE_TYPES } from "@/integrations/linear"
 import type { LinearStateType } from "@/integrations/linear"
 import { mapLinearIssueToInboxItem } from "@/integrations/linear-mapper"
@@ -225,6 +225,29 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
           (t.connection_id === conn.id || t.connection_id == null),
         )
         .toArray()
+      let shouldReloadTasks = false
+
+      // Keep provider project/list/workspace labels fresh for imported tasks.
+      const nowIso = new Date().toISOString()
+      for (const task of existingConnectionTasks) {
+        if (!task.source_id) continue
+        const sourceItem = itemBySourceId.get(task.source_id)
+        if (!sourceItem) continue
+
+        const nextSourceProject = deriveSourceProject(sourceItem)
+        if ((task.source_project ?? null) === nextSourceProject) continue
+
+        await db.tasks.update(task.id, {
+          source_project: nextSourceProject,
+          updated_at: nowIso,
+        })
+        void queueSync("tasks", "update", {
+          id: task.id,
+          source_project: nextSourceProject,
+          updated_at: nowIso,
+        })
+        shouldReloadTasks = true
+      }
 
       // Inbound reopen detection: if a previously completed task appears in
       // active fetch again, restore it locally without writeback.
@@ -322,8 +345,8 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
         }
       }
 
-      // Refresh the task store so auto-imported tasks appear in the UI
-      if (autoImportedIds.size > 0) {
+      // Refresh task store so auto-imports and project-label backfills render immediately.
+      if (autoImportedIds.size > 0 || shouldReloadTasks) {
         void useTaskStore.getState().loadTasks()
       }
 

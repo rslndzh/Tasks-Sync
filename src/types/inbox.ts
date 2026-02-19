@@ -24,6 +24,34 @@ export interface InboxItem {
   url: string | null
 }
 
+function toNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+/**
+ * Provider project/list/workspace label for imported tasks.
+ * Linear/Todoist: projectName, Attio: list/workspace fallback.
+ */
+export function deriveSourceProject(item: InboxItem): string | null {
+  const metadata = item.metadata as Record<string, unknown>
+
+  if (item.sourceType === "linear" || item.sourceType === "todoist") {
+    return toNonEmptyString(metadata.projectName)
+  }
+
+  if (item.sourceType === "attio") {
+    return (
+      toNonEmptyString(metadata.projectName) ??
+      toNonEmptyString(metadata.listName) ??
+      toNonEmptyString(metadata.workspaceName)
+    )
+  }
+
+  return null
+}
+
 /**
  * Convert a normalized InboxItem into a LocalTask ready for Dexie.
  * Caller provides the target bucket + section.
@@ -38,6 +66,7 @@ export function mapInboxItemToLocalTask(
 ): LocalTask {
   // Pull original description from provider metadata if available
   const sourceDesc = typeof item.metadata.description === "string" ? item.metadata.description : null
+  const sourceProject = deriveSourceProject(item)
 
   return {
     id: crypto.randomUUID(),
@@ -45,6 +74,7 @@ export function mapInboxItemToLocalTask(
     title: item.title,
     description: null,
     source_description: sourceDesc,
+    source_project: sourceProject,
     waiting_for_reason: null,
     status: "active",
     source: item.sourceType,
