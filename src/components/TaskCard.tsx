@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Circle, Pencil, Play, Trash2 } from "lucide-react"
+import { Circle, ExternalLink, Pencil, Play, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTaskStore } from "@/stores/useTaskStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { PROVIDER_ICON_MAP } from "@/components/icons/ProviderIcons"
+import { getTaskSourceUrl } from "@/lib/task-links"
 import type { LocalTask } from "@/types/local"
 
 interface TaskCardProps {
@@ -72,6 +73,7 @@ export function TaskCard({
   const hasTracked = totalTracked > 0
   const showTimeInfo = hasTracked
   const waitingReason = task.waiting_for_reason?.trim() ? task.waiting_for_reason.trim() : null
+  const sourceUrl = getTaskSourceUrl(task)
 
   return (
     <div
@@ -182,6 +184,19 @@ export function TaskCard({
 
         {/* Action buttons — always visible on mobile, hover-reveal on desktop */}
         <div className="flex h-6 items-center gap-0.5 md:hidden md:group-hover:flex">
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex size-8 md:size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="Open in source"
+              title="Open in source"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink className="size-3.5 md:size-3" />
+            </a>
+          )}
           {!isActiveInSession && (
             <Button
               variant="ghost"
