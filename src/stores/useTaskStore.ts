@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { getCurrentUserId } from "@/lib/auth"
 import { queueSync } from "@/lib/sync"
 import { writebackCompletion } from "@/lib/writeback"
+import { useSessionStore } from "@/stores/useSessionStore"
 import type { LocalTask } from "@/types/local"
 import type { SectionType, TodayLaneType } from "@/types/database"
 
@@ -24,7 +25,7 @@ interface TaskState {
   // Actions
   loadTasks: () => Promise<void>
   addTask: (title: string, bucketId: string, section?: SectionType) => Promise<LocalTask>
-  updateTask: (id: string, updates: Partial<Pick<LocalTask, "title" | "description" | "estimate_minutes">>) => Promise<void>
+  updateTask: (id: string, updates: Partial<Pick<LocalTask, "title" | "description" | "estimate_minutes" | "waiting_for_reason">>) => Promise<void>
   completeTask: (id: string, options?: { skipWriteback?: boolean }) => Promise<void>
   uncompleteTask: (id: string, options?: { skipWriteback?: boolean }) => Promise<void>
   archiveTask: (id: string) => Promise<void>
@@ -53,6 +54,12 @@ interface TaskState {
   getUnbucketedTasks: () => LocalTask[]
 }
 
+async function stopActiveTimerForTask(taskId: string): Promise<void> {
+  const { isRunning, activeTaskId, stopSession } = useSessionStore.getState()
+  if (!isRunning || activeTaskId !== taskId) return
+  await stopSession()
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   isLoaded: false,
@@ -65,6 +72,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const tasks = (await db.tasks.where("status").equals("active").toArray()).map((task) => ({
       ...task,
       today_lane: task.today_lane ?? null,
+      waiting_for_reason: task.waiting_for_reason ?? null,
     }))
     set({ tasks, isLoaded: true })
   },
@@ -83,6 +91,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       title,
       description: null,
       source_description: null,
+      waiting_for_reason: null,
       status: "active",
       source: "manual",
       source_id: null,
@@ -120,6 +129,25 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   completeTask: async (id, options) => {
     const task = await db.tasks.get(id)
     if (!task) return
+
+    // Waiting tasks unblock on first checkbox click instead of completing.
+    if (task.waiting_for_reason && !options?.skipWriteback) {
+      const now = new Date().toISOString()
+      await db.tasks.update(id, {
+        waiting_for_reason: null,
+        updated_at: now,
+      })
+      set((state) => ({
+        tasks: state.tasks.map((t) =>
+          t.id === id ? { ...t, waiting_for_reason: null, updated_at: now } : t,
+        ),
+      }))
+      void queueSync("tasks", "update", { id, waiting_for_reason: null, updated_at: now })
+      return
+    }
+
+    // Completion should always end focus on the same task.
+    await stopActiveTimerForTask(id)
 
     // Optimistic local update
     const now = new Date().toISOString()
@@ -184,6 +212,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   archiveTask: async (id) => {
+    // Archiving/deleting a focused task must stop its timer first.
+    await stopActiveTimerForTask(id)
+
     const now = new Date().toISOString()
     await db.tasks.update(id, { status: "archived", updated_at: now })
 
