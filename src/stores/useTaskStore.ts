@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { getCurrentUserId } from "@/lib/auth"
 import { queueSync } from "@/lib/sync"
 import { writebackCompletion } from "@/lib/writeback"
+import { useSessionStore } from "@/stores/useSessionStore"
 import type { LocalTask } from "@/types/local"
 import type { SectionType, TodayLaneType } from "@/types/database"
 
@@ -51,6 +52,12 @@ interface TaskState {
   getTasksByBucketAndSection: (bucketId: string, section: SectionType) => LocalTask[]
   getTodayTasks: () => LocalTask[]
   getUnbucketedTasks: () => LocalTask[]
+}
+
+async function stopActiveTimerForTask(taskId: string): Promise<void> {
+  const { isRunning, activeTaskId, stopSession } = useSessionStore.getState()
+  if (!isRunning || activeTaskId !== taskId) return
+  await stopSession()
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -139,6 +146,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       return
     }
 
+    // Completion should always end focus on the same task.
+    await stopActiveTimerForTask(id)
+
     // Optimistic local update
     const now = new Date().toISOString()
     await db.tasks.update(id, {
@@ -202,6 +212,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   archiveTask: async (id) => {
+    // Archiving/deleting a focused task must stop its timer first.
+    await stopActiveTimerForTask(id)
+
     const now = new Date().toISOString()
     await db.tasks.update(id, { status: "archived", updated_at: now })
 
