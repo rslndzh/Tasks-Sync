@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Circle,
   Clock,
+  ExternalLink,
   Folder,
   Play,
   Square,
@@ -22,6 +23,7 @@ import { useTaskStore } from "@/stores/useTaskStore"
 import { useBucketStore } from "@/stores/useBucketStore"
 import { useSessionStore } from "@/stores/useSessionStore"
 import { db } from "@/lib/db"
+import { getTaskSourceUrl } from "@/lib/task-links"
 import { cn } from "@/lib/utils"
 import type { LocalTimeEntry } from "@/types/local"
 import type { SectionType } from "@/types/database"
@@ -57,6 +59,7 @@ export function TaskPage() {
 
   const task = tasks.find((t) => t.id === taskId)
   const isActiveInSession = isRunning && activeTaskId === taskId
+  const sourceUrl = task ? getTaskSourceUrl(task) : null
 
   // Derive back label from the page the user navigated from
   const backLabel = useMemo(() => {
@@ -343,6 +346,20 @@ export function TaskPage() {
             >
               <Play className="h-3.5 w-3.5" />
               {isRunning ? "Switch Focus" : "Start Focus"}
+            </Button>
+          )}
+
+          {sourceUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              className="gap-1.5 rounded-full text-muted-foreground hover:text-foreground"
+            >
+              <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open in source
+              </a>
             </Button>
           )}
 
