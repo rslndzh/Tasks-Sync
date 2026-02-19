@@ -278,6 +278,38 @@ function sanitizePayload(payload: Record<string, unknown>): Record<string, unkno
   return cleaned
 }
 
+function isTaskBucketForeignKeyError(err: unknown): boolean {
+  if (typeof err !== "object" || err == null) return false
+  const maybe = err as { code?: unknown; message?: unknown; details?: unknown }
+  const code = typeof maybe.code === "string" ? maybe.code : ""
+  const text = `${String(maybe.message ?? "")} ${String(maybe.details ?? "")}`.toLowerCase()
+  return code === "23503" && text.includes("tasks_bucket_id_fkey")
+}
+
+async function repairTaskBucketReference(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  let bucketId = typeof payload.bucket_id === "string" ? payload.bucket_id : null
+  if (!bucketId && typeof payload.id === "string") {
+    const localTask = await db.tasks.get(payload.id)
+    bucketId = typeof localTask?.bucket_id === "string" ? localTask.bucket_id : null
+  }
+  if (!bucketId) return null
+
+  const localBucket = await db.buckets.get(bucketId)
+  if (localBucket) {
+    const cleanBucket = sanitizePayload(localBucket as unknown as Record<string, unknown>)
+    const { error } = await client.from("buckets").upsert(cleanBucket)
+    if (error) throw error
+    return payload
+  }
+
+  // Bucket reference is stale locally too — drop it so the task can sync.
+  return { ...payload, bucket_id: null }
+}
+
 async function pushToSupabase(item: SyncQueueItem): Promise<void> {
   if (!supabase) return
 
@@ -292,13 +324,28 @@ async function pushToSupabase(item: SyncQueueItem): Promise<void> {
   switch (operation) {
     case "insert": {
       // Use upsert to handle conflicts (e.g., duplicate Inbox bucket)
-      const { error } = await client.from(table).upsert(payload)
+      let { error } = await client.from(table).upsert(payload)
+      if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
+        const repairedPayload = await repairTaskBucketReference(client, payload)
+        if (repairedPayload) {
+          const retry = await client.from(table).upsert(repairedPayload)
+          error = retry.error
+        }
+      }
       if (error) throw error
       break
     }
     case "update": {
       const { id, ...rest } = payload
-      const { error } = await client.from(table).update(rest).eq("id", id as string)
+      let { error } = await client.from(table).update(rest).eq("id", id as string)
+      if (table === "tasks" && error && isTaskBucketForeignKeyError(error)) {
+        const repairedPayload = await repairTaskBucketReference(client, payload)
+        if (repairedPayload) {
+          const { id: retryId, ...retryRest } = repairedPayload
+          const retry = await client.from(table).update(retryRest).eq("id", retryId as string)
+          error = retry.error
+        }
+      }
       // Ignore 404-style errors — the row might have been deleted on server
       if (error && error.code !== "PGRST116") throw error
       break
