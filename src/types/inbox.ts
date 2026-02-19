@@ -45,8 +45,7 @@ export function deriveSourceProject(item: InboxItem): string | null {
     return (
       toNonEmptyString(metadata.projectName) ??
       toNonEmptyString(metadata.listName) ??
-      toNonEmptyString(metadata.workspaceName) ??
-      toNonEmptyString(metadata.workspaceId)
+      toNonEmptyString(metadata.workspaceName)
     )
   }
 
